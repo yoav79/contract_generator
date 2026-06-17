@@ -5,8 +5,10 @@ import { revalidatePath } from "next/cache";
 
 import { isLawyer } from "@/lib/auth/authorization";
 import { getSession, isAuthenticatedSession } from "@/lib/auth/session";
+import { archiveTemplate } from "@/server/templates/archive-template";
 import { createTemplateWithDocx } from "@/server/templates/create-template-with-docx";
 import { extractTemplateFields } from "@/server/templates/extract-template-fields";
+import { publishTemplate } from "@/server/templates/publish-template";
 import { updateTemplateField } from "@/server/templates/update-template-field";
 
 export type CreateTemplateActionState =
@@ -70,6 +72,45 @@ const UPDATE_INVALID_DISPLAY_ORDER_MESSAGE =
   "El orden de visualización debe ser un entero mayor o igual a 0.";
 const UPDATE_GENERIC_ERROR_MESSAGE =
   "No se pudo actualizar el campo. Verifica los datos e intenta de nuevo.";
+
+export type PublishTemplateActionState =
+  | {
+      success: true;
+      message: string;
+      templateId: string;
+      templateStatus: string;
+      versionStatus: string;
+      publishedAt: string;
+    }
+  | {
+      success: false;
+      message: string;
+    };
+
+const PUBLISH_UNAUTHORIZED_MESSAGE =
+  "No autorizado para publicar templates.";
+const PUBLISH_MISSING_TEMPLATE_ID_MESSAGE = "El template es requerido.";
+const PUBLISH_GENERIC_ERROR_MESSAGE =
+  "No se pudo publicar el template. Verifica que cumpla los requisitos e intenta de nuevo.";
+
+export type ArchiveTemplateActionState =
+  | {
+      success: true;
+      message: string;
+      templateId: string;
+      templateStatus: string;
+      versionStatus: string;
+    }
+  | {
+      success: false;
+      message: string;
+    };
+
+const ARCHIVE_UNAUTHORIZED_MESSAGE =
+  "No autorizado para archivar templates.";
+const ARCHIVE_MISSING_TEMPLATE_ID_MESSAGE = "El template es requerido.";
+const ARCHIVE_GENERIC_ERROR_MESSAGE =
+  "No se pudo archivar el template. Verifica el estado e intenta de nuevo.";
 
 const VALID_FIELD_TYPES = new Set<string>(Object.values(TemplateFieldType));
 
@@ -237,5 +278,90 @@ export async function createTemplateAction(
     };
   } catch {
     return { success: false, message: GENERIC_ERROR_MESSAGE };
+  }
+}
+
+export async function publishTemplateAction(
+  _prevState: PublishTemplateActionState | undefined,
+  formData: FormData,
+): Promise<PublishTemplateActionState> {
+  const session = await getSession();
+
+  if (!isAuthenticatedSession(session)) {
+    return { success: false, message: INVALID_SESSION_MESSAGE };
+  }
+
+  if (!isLawyer(session.role)) {
+    return { success: false, message: PUBLISH_UNAUTHORIZED_MESSAGE };
+  }
+
+  const templateId = String(formData.get("templateId") ?? "").trim();
+
+  if (!templateId) {
+    return { success: false, message: PUBLISH_MISSING_TEMPLATE_ID_MESSAGE };
+  }
+
+  try {
+    const result = await publishTemplate({
+      userId: session.userId,
+      userRole: session.role,
+      templateId,
+    });
+
+    revalidatePath("/lawyer/templates");
+    revalidatePath(`/lawyer/templates/${templateId}`);
+
+    return {
+      success: true,
+      message: "Template publicado correctamente.",
+      templateId: result.templateId,
+      templateStatus: result.templateStatus,
+      versionStatus: result.versionStatus,
+      publishedAt: result.publishedAt.toISOString(),
+    };
+  } catch {
+    return { success: false, message: PUBLISH_GENERIC_ERROR_MESSAGE };
+  }
+}
+
+export async function archiveTemplateAction(
+  _prevState: ArchiveTemplateActionState | undefined,
+  formData: FormData,
+): Promise<ArchiveTemplateActionState> {
+  const session = await getSession();
+
+  if (!isAuthenticatedSession(session)) {
+    return { success: false, message: INVALID_SESSION_MESSAGE };
+  }
+
+  if (!isLawyer(session.role)) {
+    return { success: false, message: ARCHIVE_UNAUTHORIZED_MESSAGE };
+  }
+
+  const templateId = String(formData.get("templateId") ?? "").trim();
+
+  if (!templateId) {
+    return { success: false, message: ARCHIVE_MISSING_TEMPLATE_ID_MESSAGE };
+  }
+
+  try {
+    const result = await archiveTemplate({
+      userId: session.userId,
+      userRole: session.role,
+      templateId,
+    });
+
+    revalidatePath("/lawyer/templates");
+    revalidatePath(`/lawyer/templates/${templateId}`);
+
+    return {
+      success: true,
+      message: "Template archivado correctamente.",
+      templateId: result.templateId,
+      templateStatus: result.templateStatus,
+      versionStatus: result.versionStatus,
+    };
+  } catch {
+    return { success: false, message: ARCHIVE_GENERIC_ERROR_MESSAGE };
   }
 }

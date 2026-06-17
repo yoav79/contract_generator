@@ -112,6 +112,36 @@ Abre [http://localhost:3000](http://localhost:3000).
 - `ADMIN_STAFF` no accede a `/lawyer/templates/*` ni ve formularios de extracción/edición.
 - `docxPath`, rutas de `storage/` y contenido del DOCX **no** aparecen en la UI.
 
+## Probar publicación y archivado (Fase 4)
+
+1. Crea un template DOCX con al menos un placeholder válido (ver Fase 3).
+2. Abre **Ver detalle** → extrae placeholders y configura labels si hace falta.
+3. En estado `DRAFT`, confirma el checklist de publicación:
+   - DOCX asociado: Sí
+   - Al menos un campo detectado
+   - Labels válidos (no vacíos, máximo 120 caracteres)
+   - Versión en `DRAFT`
+4. Pulsa **Publicar template** y confirma:
+   - Estado del template y versión: `PUBLISHED`
+   - `publishedAt` visible
+   - Sin extracción ni formularios de edición
+   - Campos en solo lectura
+   - Botón **Archivar template** visible
+5. Pulsa **Archivar template** y confirma:
+   - Estado del template y versión: `ARCHIVED`
+   - `publishedAt` conservado
+   - Mensaje de template archivado
+   - Sin acciones de publicar, archivar, extraer ni editar
+6. Opcional: verifica en PostgreSQL (`npm run db:studio`) estados, `publishedAt`, campos intactos y auditoría `TEMPLATE_PUBLISHED` / `TEMPLATE_ARCHIVED`.
+
+**Seguridad esperada:**
+
+- Solo el abogado propietario puede publicar y archivar.
+- `ADMIN_STAFF` no accede a `/lawyer/templates/*` — redirigido a `/dashboard`.
+- `docxPath`, rutas de `storage/` y contenido del DOCX **no** aparecen en el HTML.
+
+**Validación E2E realizada:** flujo `DRAFT` → `PUBLISHED` → `ARCHIVED` con Playwright; PostgreSQL, auditoría e inspección HTML sin rutas privadas confirmados.
+
 ## Storage local privado
 
 Los archivos DOCX subidos se guardan en desarrollo bajo:
@@ -134,7 +164,7 @@ src/
     (auth)/login/               # Login
     (protected)/                # Rutas protegidas por rol
       lawyer/templates/         # Gestión de templates DOCX (abogado)
-        [templateId]/           # Detalle, extracción y edición de campos
+        [templateId]/           # Detalle, extracción, edición, publicación y archivado
       admin/generate/           # Placeholder administrativo
   lib/
     auth/                       # Sesión, roles, autorización
@@ -142,7 +172,7 @@ src/
     audit/                      # Registro de auditoría
     db.ts                       # Cliente Prisma compartido
   server/
-    templates/                  # Creación, extracción y actualización de campos
+    templates/                  # Creación, extracción, campos, publicación y archivado
     documents/                  # Extracción de placeholders DOCX; render/PDF pendientes
 prisma/
   schema.prisma                 # Modelos del dominio
@@ -232,28 +262,88 @@ Ejemplos inválidos (reportados, no persistidos):
 - `ADMIN_STAFF` bloqueado en rutas `/lawyer/*`.
 - `docxPath` y rutas privadas **no** se exponen en UI ni respuestas de Server Actions.
 
+### Fase 4 — completada
+
+Publicación y archivado de templates DOCX para abogados.
+
+**Estados del dominio:**
+
+- `DRAFT` — borrador editable (extracción y configuración de campos)
+- `PUBLISHED` — template aprobado, listo para uso administrativo futuro
+- `ARCHIVED` — template retirado; terminal en MVP (sin desarchivado)
+
+**Flujo de publicación:**
+
+- Precondiciones: `ContractTemplate.status === DRAFT`, versión actual en `DRAFT`, DOCX asociado (`docxPath`), al menos un `TemplateField`, labels válidos (trim no vacío, máximo 120 caracteres).
+- Efecto atómico: `template.status` y `version.status` → `PUBLISHED`; `version.publishedAt` se establece.
+- Servidor: `publishTemplate` en `src/server/templates/publish-template.ts`.
+- Server Action: `publishTemplateAction`.
+- UI: checklist informativo + botón **Publicar template** en `/lawyer/templates/[templateId]`.
+
+**Flujo de archivado:**
+
+- Precondición: template y versión en `PUBLISHED` (no se puede archivar desde `DRAFT`).
+- Efecto atómico: `template.status` y `version.status` → `ARCHIVED`.
+- Se conserva `publishedAt`, DOCX en storage, `TemplateField` y registros previos de `AuditLog`.
+- Archivado **terminal** en MVP — no hay desarchivado ni republicación.
+- Servidor: `archiveTemplate` en `src/server/templates/archive-template.ts`.
+- Server Action: `archiveTemplateAction`.
+
+**UI condicional en detalle del template:**
+
+| Estado | Extracción / edición | Publicar | Archivar | Campos |
+|--------|----------------------|----------|----------|--------|
+| `DRAFT` | Visible | Visible | — | Editables |
+| `PUBLISHED` | Oculto | — | Visible | Solo lectura |
+| `ARCHIVED` | Oculto | — | — | Solo lectura + aviso |
+
+**Auditoría:**
+
+- `TEMPLATE_PUBLISHED` — metadata: `versionId`, `version`, `publishedAt`, `fieldCount`, estados previos
+- `TEMPLATE_ARCHIVED` — metadata: `versionId`, `version`, `publishedAt`, estados previos
+
+**Seguridad:**
+
+- Solo `LAWYER` propietario (`createdById`).
+- `ADMIN_STAFF` bloqueado en rutas `/lawyer/*`.
+- `docxPath` y rutas privadas **no** se exponen en UI ni respuestas de Server Actions.
+
 ### Todavía NO existe
 
-- Publicación de templates (`PUBLISHED` / flujo de publicación)
-- Formulario administrativo real para generar contratos (`/admin/generate` es placeholder)
+- Panel administrativo real para **seleccionar templates publicados** (`/admin/generate` es placeholder)
+- Formulario administrativo para completar campos y generar contratos
 - Render DOCX con datos del formulario
 - Generación PDF
 - Descarga de PDF
+- Historial administrativo de documentos generados
 - Reemplazo de DOCX de una versión existente desde UI
+- Desarchivado de templates
 - Validación por magic bytes del contenido DOCX real
 
 ## Riesgos y deuda técnica
 
 - **Next.js 16:** convención `middleware` deprecada a favor de `proxy` — revisar antes de actualizar despliegue.
 - **Build Turbopack:** advertencia por `process.cwd()` en `src/lib/storage/paths.ts` al importar módulos de storage desde Server Actions.
+- **Mensaje de éxito efímero:** tras publicar o archivar, `revalidatePath` puede refrescar la página antes de que el banner del formulario cliente sea visible; el cambio de estado en BD/UI es correcto.
+- **Sin `archivedAt` en schema:** la fecha de archivado queda en `AuditLog.createdAt` del evento `TEMPLATE_ARCHIVED`.
+- **Datos de prueba locales:** templates y DOCX creados en desarrollo no se versionan; pueden acumularse en BD y `storage/`.
+- **`MAX_LABEL_LENGTH` duplicado:** la constante (120) existe en servicios de campos y publicación; podría extraerse a módulo compartido.
 - **Lista de templates:** sin paginación.
 - **Validación DOCX:** por extensión, tamaño y MIME; sin verificación de magic bytes del contenido real.
 - **Atomicidad upload + BD:** compensación manual si falla storage o Prisma tras crear registros.
-- **Re-extracción destructiva:** campos huérfanos (ausentes en el DOCX) se eliminan de la BD con su configuración.
+- **Re-extracción destructiva:** campos huérfanos (ausentes en el DOCX) se eliminan de la BD con su configuración (solo en versiones `DRAFT`).
 - **TemplateField:** sin columna `updatedAt`; historial de ediciones solo vía `AuditLog`.
 - **Extracción OOXML:** entidades XML en `<w:t>` no se decodifican explícitamente; placeholders partidos entre archivos XML distintos no se detectan.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 4: publicación y archivado de templates DOCX
+
+- Servicios `publishTemplate` y `archiveTemplate` con transacción atómica template + versión
+- Server Actions `publishTemplateAction` y `archiveTemplateAction`
+- UI condicional en `/lawyer/templates/[templateId]`: checklist, publicar, archivar, solo lectura
+- Auditoría `TEMPLATE_PUBLISHED` y `TEMPLATE_ARCHIVED`
+- Validación E2E: `DRAFT` → `PUBLISHED` → `ARCHIVED`; PostgreSQL, auditoría y HTML sin rutas privadas
 
 ### 2026-06-17 — Fase 3: extracción y configuración de campos DOCX
 
