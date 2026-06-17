@@ -32,6 +32,9 @@ export default async function AdminGeneratePage() {
         Solo aparecen templates publicados por un abogado y listos para
         completar.
       </p>
+      <p>
+        <Link href="/admin/generated-documents">Ver documentos generados</Link>
+      </p>
 
       <section>
         <h2>Templates disponibles</h2>

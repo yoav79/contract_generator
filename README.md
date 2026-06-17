@@ -2,7 +2,7 @@
 
 Aplicación para generación controlada de contratos legales.
 
-Los abogados gestionan templates DOCX con placeholders. El personal administrativo completa formularios dinámicos sobre templates publicados, genera documentos DOCX y PDF privados y descarga el PDF resultante de forma segura (solo PDF, nunca DOCX editable).
+Los abogados gestionan templates DOCX con placeholders. El personal administrativo completa formularios dinámicos sobre templates publicados, genera documentos DOCX y PDF privados, descarga el PDF de forma segura (solo PDF, nunca DOCX editable) y consulta un historial de los últimos documentos generados.
 
 ## Requisitos
 
@@ -298,6 +298,46 @@ Abre [http://localhost:3000](http://localhost:3000).
 
 **Validación E2E realizada:** admin generó documento, PDF creado, botón **Descargar PDF** visible con `href` por `generatedDocumentId`, descarga HTTP `200`, magic bytes `%PDF-`, headers correctos, `GeneratedDocument` `COMPLETED` con `docxPath` y `pdfPath` no nulos, auditorías `GENERATED_DOCUMENT_CREATED`, `GENERATED_DOCUMENT_PDF_CREATED` y `GENERATED_DOCUMENT_DOWNLOADED`, `LAWYER` bloqueado/redirigido, ID inexistente devuelve `404`, endpoints DOCX alternativos devuelven `404`, HTML sin `docxPath`/`pdfPath`/`storage/`; `npm run lint` y `npm run build` OK.
 
+**Nota:** Desde Fase 9, los documentos generados también aparecen en el historial administrativo (ver sección Fase 9).
+
+## Probar historial de documentos generados (Fase 9)
+
+1. Ejecuta migraciones y seed (ver secciones anteriores).
+2. Asegúrate de tener al menos un `GeneratedDocument` con `status === COMPLETED` y PDF creado (ver Fases 6–8 si hace falta generar uno).
+3. Inicia sesión como `admin@local.dev`.
+4. Entra a [http://localhost:3000/admin/generate](http://localhost:3000/admin/generate) y confirma el enlace **Ver documentos generados**, o abre directamente [http://localhost:3000/admin/generated-documents](http://localhost:3000/admin/generated-documents).
+5. Confirma en la UI:
+   - Título: *Documentos generados*
+   - Texto: *Últimos 50 documentos generados. La descarga disponible es solo PDF.*
+   - Enlace **← Volver a generar contrato** hacia `/admin/generate`
+   - Tabla con columnas: Fecha generación, Template, Versión, Generado por, Estado, PDF
+   - Al menos un documento visible
+   - En filas `COMPLETED` con PDF: enlace **Descargar PDF** hacia `/admin/generated-documents/{generatedDocumentId}/download`
+   - En otras filas: texto *PDF pendiente*
+   - Sin `formData`, valores de campos, `docxPath`, `pdfPath`, rutas `storage/` ni contenido DOCX/PDF en el HTML
+6. Pulsa **Descargar PDF** en un documento con PDF disponible y confirma descarga válida (`%PDF-`).
+
+**Verificación HTTP de descarga desde historial:**
+
+- `GET /admin/generated-documents/{generatedDocumentId}/download` con sesión `ADMIN_STAFF`
+- Status `200`, `Content-Type: application/pdf`, `Content-Disposition: attachment`
+- `Cache-Control: no-store, private` y `Pragma: no-cache`
+- Archivo con tamaño > 0 y magic bytes `%PDF-`
+
+**Verificación en PostgreSQL** (`npm run db:studio`):
+
+- `AuditLog` con `GENERATED_DOCUMENT_DOWNLOADED` tras descargar desde el listado
+- Metadata con `generatedDocumentId`, `templateId`, `versionId` — sin PII ni rutas
+
+**Seguridad esperada:**
+
+- Solo `ADMIN_STAFF` accede a `/admin/generated-documents`; `LAWYER` redirigido a `/dashboard`
+- El listado **no** expone `formData`, `docxPath`, `pdfPath` ni rutas `storage/`
+- No hay enlace ni endpoint para descargar DOCX editable
+- Visualizar el listado **no** genera auditoría en MVP; la descarga sí audita `GENERATED_DOCUMENT_DOWNLOADED`
+
+**Validación E2E realizada:** admin abrió `/admin/generated-documents`, tabla visible con documentos y columnas correctas, HTML sin datos privados ni rutas, descarga PDF desde historial con HTTP `200` y headers correctos, magic bytes `%PDF-`, auditoría `GENERATED_DOCUMENT_DOWNLOADED` sin PII, `LAWYER` bloqueado en listado y descarga directa, enlace **Ver documentos generados** desde `/admin/generate` validado; `npm run lint` y `npm run build` OK.
+
 ## Storage local privado
 
 Los archivos DOCX de templates se guardan en desarrollo bajo:
@@ -329,9 +369,10 @@ src/
     (protected)/                # Rutas protegidas por rol
       lawyer/templates/         # Gestión de templates DOCX (abogado)
         [templateId]/           # Detalle, extracción, edición, publicación y archivado
-      admin/generate/           # Panel administrativo: listado, formulario y generación DOCX+PDF
+      admin/generate/           # Panel administrativo: listado templates, formulario y generación DOCX+PDF
         [templateId]/           # Formulario dinámico, botón Generar documento, estado PDF y descarga
-      admin/generated-documents/  # Descarga segura de PDF generado (Route Handler)
+      admin/generated-documents/  # Historial admin y descarga segura de PDF
+        page.tsx                # Listado últimos 50 documentos generados
         [generatedDocumentId]/
           download/             # GET — attachment application/pdf
   lib/
@@ -342,7 +383,7 @@ src/
     db.ts                       # Cliente Prisma compartido
   server/
     templates/                  # Creación, extracción, campos, publicación, archivado y consulta publicada
-    documents/                  # Render DOCX, conversión PDF (soffice), generación y descarga segura
+    documents/                  # Render DOCX, conversión PDF, generación, listado admin y descarga segura
 prisma/
   schema.prisma                 # Modelos del dominio
 storage/                        # Archivos locales (gitignored)
@@ -763,15 +804,97 @@ Descarga segura solo PDF para documentos generados por personal administrativo.
 - Posible desincronización BD/storage produce `404` genérico sin revelar la causa
 - Sin historial/listado: solo descarga inmediata tras generar en la misma sesión de formulario
 
+### Fase 9 — completada
+
+Historial/listado administrativo de documentos generados para personal administrativo.
+
+**Alcance:**
+
+- Página `/admin/generated-documents` con los **últimos 50** documentos generados
+- Orden `createdAt` descendente; tabla simple sin búsqueda, filtros ni paginación
+- Servicio `listGeneratedDocumentsForAdmin` con DTO seguro
+- Descarga PDF desde el historial reutilizando el endpoint seguro de Fase 8
+- Enlace **Ver documentos generados** desde `/admin/generate`
+- Sin nueva migración Prisma
+
+**Flujo admin:**
+
+1. `/admin/generate` → **Ver documentos generados**
+2. `/admin/generated-documents` — tabla de documentos
+3. Si `status === COMPLETED` y PDF disponible → **Descargar PDF**
+4. Si no → *PDF pendiente*
+
+**Columnas del listado:**
+
+| Columna | Fuente DTO |
+|---------|------------|
+| Fecha generación | `createdAt` |
+| Template | `templateName` |
+| Versión | `templateVersion` |
+| Generado por | `generatedByLabel` |
+| Estado | `status` |
+| PDF | Enlace descarga o *PDF pendiente* |
+
+**Servicio y DTO:**
+
+`listGeneratedDocumentsForAdmin()` → `GeneratedDocumentListItem`:
+
+- `id`, `templateName`, `templateVersion`, `generatedByLabel`, `status`, `pdfAvailable`, `createdAt`, `updatedAt`
+- `pdfAvailable` derivado de `pdfPath !== null` en servidor (sin exponer `pdfPath`)
+- `generatedByLabel`: `name` trim si existe; si no, `email`
+
+**Seguridad:**
+
+- Solo `ADMIN_STAFF`; cualquier admin ve todos los documentos (coherente con descarga Fase 8)
+- `LAWYER` bloqueado/redirigido por middleware
+- No se expone `formData`, valores de campos, `docxPath`, `pdfPath`, `storage/generated` ni rutas absolutas
+- No se embebe contenido DOCX/PDF en el listado
+- No hay enlace DOCX
+
+**Auditoría:**
+
+- Visualizar el listado **no** se audita en MVP
+- Descargar PDF audita `GENERATED_DOCUMENT_DOWNLOADED` (Fase 8); cada descarga exitosa genera un log
+
+**Fuera de alcance (Fase 9):**
+
+- Búsqueda, filtros y paginación avanzada
+- Preview inline de PDF
+- Descarga DOCX, eliminación, regeneración PDF desde listado
+- Edición de `formData`, export CSV, métricas
+- Auditoría de visualización del listado
+
+**Validación E2E realizada:**
+
+- Admin abrió `/admin/generated-documents`; tabla visible; columnas verificadas
+- HTML sin datos privados ni rutas
+- Descarga PDF desde historial: HTTP `200`, headers correctos, `%PDF-`
+- Auditoría `GENERATED_DOCUMENT_DOWNLOADED` sin PII
+- `LAWYER` bloqueado en listado y descarga directa
+- Enlace desde `/admin/generate` validado
+
+**Riesgos y deuda (Fase 9):**
+
+- Límite fijo de 50 documentos; los más antiguos no aparecen
+- Sin búsqueda ni paginación
+- `templateName` refleja el nombre actual en BD (no snapshot histórico)
+- Cada descarga genera auditoría (heredado de Fase 8)
+- Registros `FAILED`/`PENDING` aparecen como *PDF pendiente*
+- `generatedByLabel` puede mostrar email del admin si no tiene `name`
+
 ### Todavía NO existe
 
 - Descarga de DOCX editable
-- Historial administrativo de documentos generados
 - Preview inline de PDF
 - Reintento manual de PDF desde UI
-- Búsqueda/paginación de documentos generados
+- Búsqueda/filtros/paginación avanzada de documentos generados
 - Enlaces firmados o expiración de descarga
 - Storage externo o envío por email
+- Eliminación de documentos generados
+- Regeneración PDF desde listado
+- Edición de `formData` desde UI admin
+- Export CSV o métricas de documentos
+- Auditoría de visualización del listado
 - Reemplazo de DOCX de una versión existente desde UI
 - Desarchivado de templates
 - Validación por magic bytes del contenido DOCX real
@@ -807,10 +930,21 @@ Descarga segura solo PDF para documentos generados por personal administrativo.
 - **Fase 8 — auditoría por descarga:** cada `GET` exitoso al endpoint de descarga registra `GENERATED_DOCUMENT_DOWNLOADED`.
 - **Fase 8 — PDF con PII:** el PDF generado contiene datos del formulario; la respuesta usa `Cache-Control: no-store, private`.
 - **Fase 8 — desincronización BD/storage:** si `pdfPath` existe en BD pero el archivo fue eliminado, la descarga devuelve `404` genérico.
-- **Fase 8 — sin historial:** no hay listado admin de documentos generados; la descarga está limitada al resultado inmediato del formulario.
 - **Fase 8 — pdfPath null sin prueba E2E:** no había registro `COMPLETED` sin PDF en BD local al validar el caso negativo.
+- **Fase 9 — límite 50:** el historial admin muestra solo los últimos 50 `GeneratedDocument` por `createdAt`.
+- **Fase 9 — sin búsqueda ni paginación:** documentos antiguos quedan fuera del listado MVP.
+- **Fase 9 — nombre de template actual:** si el template se renombró tras la generación, el listado muestra el nombre vigente en BD.
+- **Fase 9 — generatedByLabel:** puede exponer email interno del admin si `User.name` está vacío.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 9: historial administrativo de documentos generados
+
+- Servicio `listGeneratedDocumentsForAdmin` con DTO seguro
+- Página `/admin/generated-documents` con tabla de últimos 50 documentos
+- Enlace **Ver documentos generados** desde `/admin/generate`
+- Descarga PDF desde historial vía endpoint Fase 8; sin auditoría de visualización del listado
+- Validación E2E: listado admin, HTML sin PII/rutas, descarga desde historial, bloqueo `LAWYER`, enlace desde generate
 
 ### 2026-06-17 — Fase 8: descarga segura solo PDF
 
