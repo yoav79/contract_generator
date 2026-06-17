@@ -16,6 +16,7 @@ import {
 } from "@/lib/storage/generated-docx";
 import { getPublishedTemplateForGeneration } from "@/server/templates/get-published-template-for-generation";
 
+import { generatePdfForDocument } from "./generate-pdf-for-document";
 import { renderDocx } from "./render-docx";
 
 const UNAUTHORIZED_MESSAGE = "No autorizado para generar documentos.";
@@ -39,6 +40,7 @@ export type GenerateContractDocumentResult = {
   templateId: string;
   versionId: string;
   fieldCount: number;
+  pdfCreated: boolean;
 };
 
 async function markGeneratedDocumentFailed(
@@ -162,12 +164,28 @@ export async function generateContractDocument(
       });
     });
 
+    let pdfCreated = false;
+
+    try {
+      const pdfResult = await generatePdfForDocument({
+        generatedDocumentId: generatedDocument.id,
+        userId: trimmedUserId,
+        userRole,
+      });
+
+      pdfCreated = pdfResult.pdfCreated;
+    } catch {
+      // El DOCX ya está COMPLETED; el fallo de PDF no invalida la generación.
+      pdfCreated = false;
+    }
+
     return {
       generatedDocumentId: generatedDocument.id,
       status: GeneratedDocumentStatus.COMPLETED,
       templateId: template.templateId,
       versionId: template.versionId,
       fieldCount,
+      pdfCreated,
     };
   } catch {
     if (savedDocxRelativePath) {

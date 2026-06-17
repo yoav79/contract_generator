@@ -2,13 +2,23 @@
 
 Aplicación para generación controlada de contratos legales.
 
-Los abogados gestionan templates DOCX con placeholders. El personal administrativo completa formularios dinámicos sobre templates publicados y genera documentos DOCX privados. La conversión a PDF y la descarga quedan para fases posteriores.
+Los abogados gestionan templates DOCX con placeholders. El personal administrativo completa formularios dinámicos sobre templates publicados y genera documentos DOCX y PDF privados. La descarga queda para una fase posterior.
 
 ## Requisitos
 
 - Node.js 20+
 - npm
 - PostgreSQL instalado localmente
+- **LibreOffice** (`soffice` en `PATH`) — requerido para conversión DOCX → PDF (Fase 7)
+
+Verifica la instalación:
+
+```bash
+which soffice
+soffice --version
+```
+
+Versión validada localmente: **LibreOffice 24.2.7.2**. En Ubuntu/Debian suele instalarse con `libreoffice-writer` o el metapaquete `libreoffice-common`.
 
 ## Instalación
 
@@ -196,6 +206,45 @@ Abre [http://localhost:3000](http://localhost:3000).
 
 **Validación E2E realizada:** generación exitosa como `ADMIN_STAFF`, `GeneratedDocument` `COMPLETED`, `pdfPath` null, DOCX en `storage/generated/`, audit log `GENERATED_DOCUMENT_CREATED` sin PII, validaciones negativas (TEXT vacío, NUMBER inválido vía validador), template archivado bloquea generación, `LAWYER` bloqueado en rutas admin, HTML sin rutas privadas; `npm run lint` y `npm run build` OK.
 
+**Nota:** Desde Fase 7, el mismo botón **Generar documento** encadena conversión a PDF (ver sección Fase 7).
+
+## Probar generación PDF (Fase 7)
+
+1. Ejecuta migraciones y seed (ver secciones anteriores).
+2. Confirma que `soffice` está disponible (`which soffice`, `soffice --version`).
+3. Como abogado, crea y **publica** un template con placeholders `{{nombre_cliente}}`, `{{fecha_inicio}}`, `{{monto_total}}`, `{{acepta_terminos}}` y campos configurados (`TEXT`, `DATE`, `NUMBER`, `BOOLEAN` requeridos). Si no hay templates `PUBLISHED` en dev, republica uno existente o crea uno nuevo.
+4. Inicia sesión como `admin@local.dev`.
+5. Entra a [http://localhost:3000/admin/generate](http://localhost:3000/admin/generate).
+6. Pulsa **Completar formulario** en un template `PUBLISHED`.
+7. Completa el formulario y pulsa **Generar documento**.
+8. Confirma en la UI:
+   - Mensaje: *Documento generado correctamente. El PDF fue creado y la descarga se implementará en una fase posterior.* (si la conversión PDF fue exitosa)
+   - `generatedDocumentId` visible
+   - **Estado PDF:** `PDF creado` (o `PDF pendiente` si falló solo la conversión)
+   - Sin botón de descarga, sin enlace a archivo, sin PDF embebido
+   - Sin `docxPath`, `pdfPath`, rutas `storage/` ni rutas absolutas en el HTML
+
+**Verificación en PostgreSQL** (`npm run db:studio`):
+
+- `GeneratedDocument` con `status === COMPLETED`
+- `docxPath` no nulo
+- `pdfPath` no nulo (si PDF creado)
+- `formData` con valores normalizados del formulario
+- `AuditLog` con `GENERATED_DOCUMENT_CREATED` y, si PDF exitoso, `GENERATED_DOCUMENT_PDF_CREATED` — metadata sin PII ni rutas
+
+**Verificación en storage:**
+
+- `storage/generated/{generatedDocumentId}/document.docx` con tamaño > 0
+- `storage/generated/{generatedDocumentId}/document.pdf` con tamaño > 0 y magic bytes `%PDF-` (si PDF exitoso)
+
+**Seguridad esperada:**
+
+- Solo `ADMIN_STAFF` accede a `/admin/*`; `LAWYER` redirigido a `/dashboard`.
+- La UI **no** expone `docxPath`, `pdfPath`, rutas `storage/` ni contenido DOCX/PDF.
+- La auditoría PDF **no** incluye `formData`, rutas ni valores de campos.
+
+**Validación E2E realizada:** generación desde UI como `ADMIN_STAFF`, `GeneratedDocument` `COMPLETED`, `docxPath` y `pdfPath` no nulos, `document.docx` y `document.pdf` en storage privado, PDF válido (`%PDF-`), auditorías `GENERATED_DOCUMENT_CREATED` y `GENERATED_DOCUMENT_PDF_CREATED` sin PII, TEXT vacío bloquea antes de nuevo `GeneratedDocument`, reintento PDF sobre documento existente rechazado sin sobrescritura, `LAWYER` bloqueado en rutas admin, HTML sin rutas privadas; `npm run lint` y `npm run build` OK.
+
 ## Storage local privado
 
 Los archivos DOCX de templates se guardan en desarrollo bajo:
@@ -204,17 +253,18 @@ Los archivos DOCX de templates se guardan en desarrollo bajo:
 storage/templates/{templateId}/v1/source.docx
 ```
 
-Los DOCX generados por el personal administrativo se guardan bajo:
+Los documentos generados por el personal administrativo se guardan bajo:
 
 ```text
 storage/generated/{generatedDocumentId}/document.docx
+storage/generated/{generatedDocumentId}/document.pdf
 ```
 
 - La carpeta `storage/` está **ignorada por Git** (salvo `storage/.gitkeep`).
-- Los DOCX reales **no deben versionarse** en el repositorio.
+- Los DOCX y PDF reales **no deben versionarse** en el repositorio.
 - No se sirven archivos desde `public/`.
 
-Ruta prevista sin uso completo en MVP: `storage/temp/`.
+`storage/temp/` — directorios temporales únicos para conversión DOCX → PDF (LibreOffice); se limpian tras cada conversión.
 
 ## Estructura base
 
@@ -225,17 +275,17 @@ src/
     (protected)/                # Rutas protegidas por rol
       lawyer/templates/         # Gestión de templates DOCX (abogado)
         [templateId]/           # Detalle, extracción, edición, publicación y archivado
-      admin/generate/           # Panel administrativo: listado, formulario y generación DOCX
-        [templateId]/           # Formulario dinámico y botón Generar documento
+      admin/generate/           # Panel administrativo: listado, formulario y generación DOCX+PDF
+        [templateId]/           # Formulario dinámico, botón Generar documento y estado PDF
   lib/
     auth/                       # Sesión, roles, autorización
     forms/                      # Validación y normalización de datos para DOCX
-    storage/                    # Rutas y guardado privado de DOCX (templates y generados)
+    storage/                    # Rutas y guardado privado DOCX/PDF (templates y generados)
     audit/                      # Registro de auditoría
     db.ts                       # Cliente Prisma compartido
   server/
     templates/                  # Creación, extracción, campos, publicación, archivado y consulta publicada
-    documents/                  # Render DOCX, orquestador de generación; PDF pendiente
+    documents/                  # Render DOCX, conversión PDF (soffice), orquestadores de generación
 prisma/
   schema.prisma                 # Modelos del dominio
 storage/                        # Archivos locales (gitignored)
@@ -490,9 +540,91 @@ Generación privada de DOCX desde templates publicados para personal administrat
 - Doble validación en action y orquestador (`validateTemplateFormData` en ambos)
 - NUMBER inválido limitado en UI por `<input type="number">` del navegador
 
+### Fase 7 — completada
+
+Conversión privada DOCX → PDF desde templates publicados para personal administrativo.
+
+**Alcance:**
+
+- Conversión privada DOCX → PDF tras generación DOCX exitosa
+- Uso de LibreOffice/`soffice` headless vía `child_process` (`execFile`, sin shell)
+- Storage privado en `storage/generated/{generatedDocumentId}/document.pdf`
+- Actualización de `GeneratedDocument.pdfPath` (columna existente desde migración inicial; sin nueva migración)
+- Auditoría `GENERATED_DOCUMENT_PDF_CREATED` sin PII
+- Encadenamiento automático en **Generar documento** (un solo submit)
+
+**Prerrequisito de sistema:**
+
+- `soffice` disponible en `PATH`
+- Versión validada localmente: LibreOffice **24.2.7.2**
+- Verificación: `which soffice` y `soffice --version`
+
+**Flujo admin:**
+
+1. `/admin/generate` — listado de templates publicados
+2. Seleccionar template → `/admin/generate/[templateId]`
+3. Completar formulario dinámico
+4. Pulsar **Generar documento**
+5. Mensaje según resultado PDF; `generatedDocumentId` visible
+6. **Estado PDF:** `PDF creado` o `PDF pendiente` (sin rutas ni descarga)
+
+**Pipeline server-side (PDF):**
+
+| Paso | Módulo |
+|------|--------|
+| Leer DOCX generado | `readStoredDocx` |
+| Convertir a PDF | `convertDocxToPdf` (`soffice --headless`) |
+| Guardar PDF generado | `saveGeneratedPdf` / `removeGeneratedPdf` |
+| Orquestar BD + storage + auditoría PDF | `generatePdfForDocument` |
+| Encadenar tras DOCX | `generateContractDocument` |
+| Conectar UI | `generateContractDocumentAction` + `ContractForm` |
+
+**Política si falla solo el PDF:**
+
+- La generación DOCX **no** se invalida: `status` permanece `COMPLETED`, `docxPath` intacto, `pdfPath` null
+- No se marca `FAILED`; no se borra el DOCX
+- UI muestra éxito parcial con **Estado PDF:** `PDF pendiente`
+
+**Política si `pdfPath` ya existe:**
+
+- `generatePdfForDocument` rechaza con error seguro (sin sobrescritura silenciosa)
+
+**Seguridad:**
+
+- `docxPath` y `pdfPath` **no** se exponen en UI ni en respuestas de Server Actions
+- Rutas `storage/` y contenido DOCX/PDF **no** se devuelven al navegador
+- Auditoría `GENERATED_DOCUMENT_PDF_CREATED`: metadata con `templateId`, `versionId`, `generatedDocumentId` — **sin** `formData`, rutas ni valores de campos
+
+**Fuera de alcance (Fase 7):**
+
+- Descarga de PDF
+- Endpoint de archivo / serving de documentos
+- Historial administrativo de documentos generados
+- Auditoría de descarga
+- Entrega de DOCX editable al cliente
+- Reintento manual de PDF desde UI
+- Cola async o control de concurrencia para LibreOffice
+
+**Validación E2E realizada:**
+
+- `GeneratedDocument` `COMPLETED` con `docxPath` y `pdfPath` no nulos
+- `document.docx` y `document.pdf` en storage privado; PDF válido (`%PDF-`)
+- `AuditLog` `GENERATED_DOCUMENT_CREATED` y `GENERATED_DOCUMENT_PDF_CREATED` sin PII
+- `LAWYER` bloqueado en rutas admin; HTML sin `docxPath`/`pdfPath`/`storage/`
+- TEXT requerido vacío bloquea antes de nuevo `GeneratedDocument`
+- Reintento PDF sobre documento con `pdfPath` existente: rechazado sin sobrescritura
+
+**Riesgos y deuda (Fase 7):**
+
+- `soffice` debe existir en producción (mismo binario que en desarrollo)
+- Calidad del PDF depende de fuentes y paquetes del SO
+- Conversión síncrona añade latencia al submit **Generar documento**
+- PDF fallido queda como **PDF pendiente** sin reintento en UI
+- Sin cola ni control de concurrencia para procesos LibreOffice
+- Templates dev pueden requerir republicación manual para pruebas repetidas
+
 ### Todavía NO existe
 
-- Conversión PDF
 - Descarga de PDF o DOCX
 - Historial administrativo de documentos generados
 - Endpoint de archivo para servir documentos generados
@@ -525,8 +657,22 @@ Generación privada de DOCX desde templates publicados para personal administrat
 - **Fase 6 — compensación storage/BD:** si el archivo se escribe pero falla la actualización en BD, se intenta eliminar el DOCX y marcar `FAILED` (best-effort).
 - **Fase 6 — doble validación:** `validateTemplateFormData` corre en la Server Action y en el orquestador.
 - **Fase 6 — NUMBER en UI:** `<input type="number">` impide enviar strings no numéricos desde el navegador; la validación server-side cubre el caso si los datos llegan.
+- **Fase 7 — LibreOffice en producción:** el host de despliegue debe tener `soffice` instalado y accesible en `PATH`.
+- **Fase 7 — conversión síncrona:** DOCX y PDF se generan en serie en el mismo request; puede aumentar tiempo de respuesta del formulario admin.
+- **Fase 7 — PDF pendiente sin reintento UI:** si falla solo la conversión, el DOCX queda válido pero no hay botón para reintentar PDF.
+- **Fase 7 — concurrencia LibreOffice:** múltiples conversiones paralelas pueden competir por el mismo motor headless.
+- **Fase 7 — templates dev:** puede no haber templates `PUBLISHED`; republicar o crear uno para pruebas manuales.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 7: conversión privada DOCX → PDF
+
+- `convertDocxToPdf` con `soffice` headless (`execFile`, temporales en `storage/temp/`)
+- `saveGeneratedPdf` / `removeGeneratedPdf` y orquestador `generatePdfForDocument`
+- Encadenamiento PDF en `generateContractDocument`; UI con **Estado PDF** (`PDF creado` / `PDF pendiente`)
+- Auditoría `GENERATED_DOCUMENT_PDF_CREATED` sin PII
+- Prerrequisito de sistema: LibreOffice `soffice` en `PATH` (validado: 24.2.7.2)
+- Validación E2E: UI admin, PostgreSQL, storage, PDF `%PDF-`, auditorías, seguridad `LAWYER`, sin descarga
 
 ### 2026-06-17 — Fase 6: generación privada de DOCX
 

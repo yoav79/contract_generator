@@ -1,4 +1,4 @@
-import { convertToPdf } from "./convert-to-pdf";
+import { convertDocxToPdf } from "./convert-to-pdf";
 
 export type GenerateDocumentInput = {
   templateDocxPath: string;
@@ -20,7 +20,7 @@ export type GenerateDocumentResult = {
 export async function generateDocument(
   input: GenerateDocumentInput,
 ): Promise<GenerateDocumentResult> {
-  void convertToPdf;
+  void convertDocxToPdf;
   void input;
   throw new Error("generateDocument no está implementado.");
 }

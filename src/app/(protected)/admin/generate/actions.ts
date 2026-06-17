@@ -25,6 +25,7 @@ export type GenerateContractDocumentActionState =
       success: true;
       message: string;
       generatedDocumentId: string;
+      pdfCreated: boolean;
     }
   | {
       success: false;
@@ -41,8 +42,10 @@ const TEMPLATE_UNAVAILABLE_MESSAGE =
   "El template ya no está disponible para generación.";
 const SUCCESS_VALIDATE_MESSAGE =
   "Los datos del formulario son válidos. La generación del documento se implementará en una fase posterior.";
-const SUCCESS_GENERATE_MESSAGE =
-  "Documento generado correctamente. La conversión a PDF y descarga se implementarán en una fase posterior.";
+const SUCCESS_GENERATE_WITH_PDF_MESSAGE =
+  "Documento generado correctamente. El PDF fue creado y la descarga se implementará en una fase posterior.";
+const SUCCESS_GENERATE_WITHOUT_PDF_MESSAGE =
+  "Documento generado correctamente, pero no se pudo crear el PDF. La conversión podrá reintentarse en una fase posterior.";
 const GENERIC_VALIDATE_ERROR_MESSAGE =
   "No se pudieron validar los datos. Verifica el formulario e intenta de nuevo.";
 const GENERIC_GENERATE_ERROR_MESSAGE =
@@ -179,8 +182,11 @@ export async function generateContractDocumentAction(
 
     return {
       success: true,
-      message: SUCCESS_GENERATE_MESSAGE,
+      message: result.pdfCreated
+        ? SUCCESS_GENERATE_WITH_PDF_MESSAGE
+        : SUCCESS_GENERATE_WITHOUT_PDF_MESSAGE,
       generatedDocumentId: result.generatedDocumentId,
+      pdfCreated: result.pdfCreated,
     };
   } catch (error) {
     if (error instanceof Error) {

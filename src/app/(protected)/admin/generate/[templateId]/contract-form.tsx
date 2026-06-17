@@ -114,6 +114,10 @@ export function ContractForm({ templateId, fields }: ContractFormProps) {
           <p>
             ID del documento generado: <code>{state.generatedDocumentId}</code>
           </p>
+          <p>
+            Estado PDF:{" "}
+            {state.pdfCreated ? "PDF creado" : "PDF pendiente"}
+          </p>
         </div>
       ) : null}
 
