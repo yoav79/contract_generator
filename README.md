@@ -1,8 +1,8 @@
 # Contract Generator
 
-Bootstrap técnico para una aplicación de generación controlada de contratos legales.
+Aplicación para generación controlada de contratos legales.
 
-Abogados gestionarán templates DOCX con placeholders. Personal administrativo completará formularios para generar PDFs finales, sin acceso al DOCX editable.
+Los abogados gestionan templates DOCX con placeholders. El personal administrativo completará formularios para generar PDFs finales, sin acceso al DOCX editable.
 
 ## Requisitos
 
@@ -34,11 +34,10 @@ Copia el archivo de ejemplo y configura tus credenciales locales:
 cp .env.example .env
 ```
 
-Edita `.env` y reemplaza `USER` y `PASSWORD` en `DATABASE_URL`:
+Edita `.env` y configura al menos:
 
-```env
-DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/contract_generator?schema=public"
-```
+- `DATABASE_URL` — conexión a PostgreSQL local
+- `SESSION_SECRET` — secreto aleatorio de al menos 32 caracteres para cookies de sesión
 
 No versiones `.env` con credenciales reales.
 
@@ -50,7 +49,7 @@ Genera el cliente de Prisma:
 npm run db:generate
 ```
 
-Aplica la migración inicial:
+Aplica las migraciones en desarrollo:
 
 ```bash
 npm run db:migrate
@@ -85,16 +84,54 @@ npm run dev
 
 Abre [http://localhost:3000](http://localhost:3000).
 
+## Probar `/lawyer/templates` (Fase 2)
+
+1. Ejecuta migraciones y seed (ver secciones anteriores).
+2. Inicia el servidor con `npm run dev`.
+3. Inicia sesión como `lawyer@local.dev`.
+4. Entra a [http://localhost:3000/lawyer/templates](http://localhost:3000/lawyer/templates).
+5. Completa el formulario con nombre, descripción opcional y un archivo `.docx` (máximo **10 MB**).
+6. Confirma el mensaje de éxito y que el template aparece en la lista con metadata visible (estado, versión, archivo original, tamaño, hash parcial, fecha).
+
+**Seguridad esperada:**
+
+- `ADMIN_STAFF` no puede acceder a `/lawyer/templates` — el middleware redirige a `/dashboard`.
+- `docxPath` y rutas privadas de storage **no** se exponen al cliente; solo metadata segura en la UI.
+
+## Storage local privado
+
+Los archivos DOCX subidos se guardan en desarrollo bajo:
+
+```text
+storage/templates/{templateId}/v1/source.docx
+```
+
+- La carpeta `storage/` está **ignorada por Git** (salvo `storage/.gitkeep`).
+- Los DOCX reales **no deben versionarse** en el repositorio.
+- No se sirven archivos desde `public/`.
+
+Rutas futuras previstas (aún sin uso completo): `storage/generated/`, `storage/temp/`.
+
 ## Estructura base
 
 ```text
 src/
-  app/                 # App Router (Next.js)
-  lib/db.ts            # Cliente Prisma compartido
-  server/documents/    # Stubs para lógica documental futura
+  app/                          # App Router (Next.js)
+    (auth)/login/               # Login
+    (protected)/                # Rutas protegidas por rol
+      lawyer/templates/         # Gestión de templates DOCX (abogado)
+      admin/generate/           # Placeholder administrativo
+  lib/
+    auth/                       # Sesión, roles, autorización
+    storage/                    # Rutas y guardado privado de DOCX
+    audit/                      # Registro de auditoría
+    db.ts                       # Cliente Prisma compartido
+  server/
+    templates/                  # Orquestación de creación de templates
+    documents/                  # Stubs para lógica documental futura
 prisma/
-  schema.prisma        # Modelos iniciales del dominio
-storage/               # Archivos locales (gitignored)
+  schema.prisma                 # Modelos del dominio
+storage/                        # Archivos locales (gitignored)
 ```
 
 ## Scripts disponibles
@@ -112,13 +149,50 @@ storage/               # Archivos locales (gitignored)
 
 ## Estado actual
 
-Este repositorio contiene únicamente el bootstrap técnico:
+### Fase 1 — completada
 
-- Next.js (App Router) + TypeScript + ESLint
-- Prisma + PostgreSQL
-- Esquema inicial de dominio
-- Stubs documentales sin implementación de negocio
+- Autenticación con sesión (`iron-session`)
+- Roles `LAWYER` y `ADMIN_STAFF`
+- Middleware y guards de rutas protegidas
+- Navegación contextual por rol (`/dashboard`, `/lawyer/*`, `/admin/*`)
+- Login, logout y usuarios de prueba vía seed
 
-Pendiente para fases siguientes: login/logout, upload DOCX, generación PDF y UI de negocio.
+### Fase 2 — completada
 
-Usuarios de prueba locales disponibles vía `npm run db:seed` (ver sección Prisma).
+- Gestión inicial de templates DOCX para abogados en `/lawyer/templates`
+- Creación de `ContractTemplate` + `ContractTemplateVersion` v1 en estado `DRAFT`
+- Upload privado de DOCX con metadata en PostgreSQL (`docxSha256`, `originalFileName`, `fileSizeBytes`, `mimeType`, `docxPath` solo en servidor/BD)
+- Storage local bajo `storage/templates/`
+- Auditoría: `TEMPLATE_CREATED`, `TEMPLATE_VERSION_CREATED`, `TEMPLATE_UPLOAD_STORED`
+- Lista de templates propios del abogado autenticado
+
+### Todavía NO existe
+
+- Extracción de placeholders desde DOCX
+- Publicación de templates (`PUBLISHED` / flujo de publicación)
+- Generación PDF
+- Descarga de DOCX
+- Panel administrativo real para generar contratos (`/admin/generate` es placeholder)
+
+## Riesgos y deuda técnica
+
+- **Next.js 16:** convención `middleware` deprecada a favor de `proxy` — revisar antes de actualizar despliegue.
+- **Build Turbopack:** advertencia por `process.cwd()` en `src/lib/storage/paths.ts` al importar módulos de storage desde Server Actions.
+- **Lista de templates:** sin paginación.
+- **Validación DOCX:** por extensión, tamaño y MIME; sin verificación de magic bytes del contenido real.
+- **Atomicidad upload + BD:** compensación manual si falla storage o Prisma tras crear registros.
+
+## Historial de cambios
+
+### 2026-06-17 — Fase 2: templates DOCX
+
+- Metadata de archivo en `ContractTemplateVersion` (migración `add_template_version_file_metadata`)
+- Storage local privado, auditoría y orquestador `createTemplateWithDocx`
+- Server Action y UI mínima en `/lawyer/templates`
+- Validación E2E desde navegador con formulario real
+
+### 2026-06-17 — Fase 1: auth y navegación
+
+- Login/logout, roles, middleware y rutas protegidas por rol
+- Dashboard contextual y placeholders de abogado/administrativo
+- Seed de usuarios de prueba locales
