@@ -2,7 +2,7 @@
 
 Aplicación para generación controlada de contratos legales.
 
-Los abogados gestionan templates DOCX con placeholders. El personal administrativo completará formularios para generar PDFs finales, sin acceso al DOCX editable.
+Los abogados gestionan templates DOCX con placeholders. El personal administrativo completa formularios dinámicos sobre templates publicados; la generación de PDF queda para fases posteriores.
 
 ## Requisitos
 
@@ -142,6 +142,25 @@ Abre [http://localhost:3000](http://localhost:3000).
 
 **Validación E2E realizada:** flujo `DRAFT` → `PUBLISHED` → `ARCHIVED` con Playwright; PostgreSQL, auditoría e inspección HTML sin rutas privadas confirmados.
 
+## Probar panel administrativo (Fase 5)
+
+1. Ejecuta migraciones y seed (ver secciones anteriores).
+2. Como abogado, crea y **publica** un template con campos `TEXT`, `DATE`, `NUMBER` y `BOOLEAN` (ver Fases 3–4).
+3. Inicia sesión como `admin@local.dev`.
+4. Entra a [http://localhost:3000/admin/generate](http://localhost:3000/admin/generate).
+5. Confirma que solo aparecen templates `PUBLISHED` (no `DRAFT` ni `ARCHIVED`).
+6. Pulsa **Completar formulario** en un template publicado.
+7. Completa el formulario dinámico y pulsa **Validar datos**.
+8. Confirma el mensaje: *Los datos del formulario son válidos. La generación del documento se implementará en una fase posterior.*
+
+**Seguridad esperada:**
+
+- Solo `ADMIN_STAFF` accede a `/admin/*`; `LAWYER` es redirigido a `/dashboard`.
+- `docxPath`, rutas de `storage/` y contenido DOCX/XML **no** aparecen en el HTML.
+- Template archivado durante el flujo devuelve error claro al enviar el formulario.
+
+**Validación E2E realizada:** listado admin, exclusión `DRAFT`/`ARCHIVED`, formulario dinámico, prevalidación exitosa, validaciones negativas, `BOOLEAN` sin marcar como `false`, template archivado durante flujo, seguridad `LAWYER`, HTML sin rutas privadas; `npm run lint` y `npm run build` OK.
+
 ## Storage local privado
 
 Los archivos DOCX subidos se guardan en desarrollo bajo:
@@ -165,14 +184,16 @@ src/
     (protected)/                # Rutas protegidas por rol
       lawyer/templates/         # Gestión de templates DOCX (abogado)
         [templateId]/           # Detalle, extracción, edición, publicación y archivado
-      admin/generate/           # Placeholder administrativo
+      admin/generate/           # Panel administrativo: listado y formulario
+        [templateId]/           # Detalle y formulario dinámico con prevalidación
   lib/
     auth/                       # Sesión, roles, autorización
+    forms/                      # Validación de datos de formulario administrativo
     storage/                    # Rutas y guardado privado de DOCX
     audit/                      # Registro de auditoría
     db.ts                       # Cliente Prisma compartido
   server/
-    templates/                  # Creación, extracción, campos, publicación y archivado
+    templates/                  # Creación, extracción, campos, publicación, archivado y consulta publicada
     documents/                  # Extracción de placeholders DOCX; render/PDF pendientes
 prisma/
   schema.prisma                 # Modelos del dominio
@@ -308,14 +329,70 @@ Publicación y archivado de templates DOCX para abogados.
 - `ADMIN_STAFF` bloqueado en rutas `/lawyer/*`.
 - `docxPath` y rutas privadas **no** se exponen en UI ni respuestas de Server Actions.
 
+### Fase 5 — completada
+
+Panel administrativo para templates publicados y prevalidación de formulario dinámico.
+
+**Rutas:**
+
+- `/admin/generate` — listado de templates `PUBLISHED`
+- `/admin/generate/[templateId]` — detalle seguro y formulario dinámico
+
+**Comportamiento:**
+
+- Solo `ADMIN_STAFF` accede a las rutas admin.
+- El listado muestra únicamente `ContractTemplate.status === PUBLISHED`; templates `DRAFT` y `ARCHIVED` no aparecen.
+- Cada ítem usa la última `ContractTemplateVersion` con `status === PUBLISHED`.
+- El detalle carga datos con `getPublishedTemplateForForm`; template inexistente o no publicado → `404` (`notFound`).
+- El formulario se construye dinámicamente desde `TemplateField` (`label`, `fieldType`, `required`, `displayOrder`).
+- `validateContractFormAction` **re-lee** el template publicado desde BD antes de validar (no confía en campos enviados por el cliente).
+- La prevalidación exitosa muestra mensaje informativo; **no** genera documento ni persiste datos.
+
+**Servicios y componentes:**
+
+- `listPublishedTemplates` — DTO seguro para listado admin
+- `getPublishedTemplateForForm` — DTO seguro con campos ordenados
+- `validateTemplateFormData` — validador puro reutilizable (`src/lib/forms/validate-template-form-data.ts`)
+- `validateContractFormAction` — Server Action de prevalidación
+- `ContractForm` — formulario dinámico con `useActionState`
+
+**Validaciones (server-side):**
+
+| Tipo | Regla |
+|------|-------|
+| `TEXT` requerido | `trim` no vacío |
+| `TEXT` | máximo 2000 caracteres (`MAX_TEXT_FIELD_LENGTH`) |
+| `DATE` | solo `YYYY-MM-DD` con fecha real |
+| `NUMBER` | número finito; rechaza `NaN`, `Infinity` y strings no numéricos |
+| `BOOLEAN` | `true`/`false`; si falta en el envío → `false`; `required` no exige `true` |
+| General | keys desconocidas → `formError`; keys duplicadas en configuración → `formError` |
+
+**Seguridad:**
+
+- Solo `ADMIN_STAFF`; `LAWYER` bloqueado en `/admin/*` (middleware + guards).
+- No se expone `docxPath`, `storage/templates`, rutas absolutas ni contenido DOCX/XML.
+- DTOs admin excluyen metadata de archivo (`originalFileName`, `docxSha256`, `fileSizeBytes`, `mimeType`, `createdById`).
+
+**Alcance explícito (fuera de Fase 5):**
+
+- No genera DOCX
+- No genera PDF
+- No crea `GeneratedDocument`
+- No audita la prevalidación
+- No descarga archivos
+
+**Validación E2E realizada:** listado admin, exclusión `DRAFT`/`ARCHIVED`, formulario dinámico por tipo, prevalidación exitosa sin `GeneratedDocument` ni `AuditLog` nuevo, validaciones negativas, `BOOLEAN` sin marcar válido como `false`, error al enviar tras archivar template, redirección de `LAWYER` en rutas admin, HTML sin rutas privadas.
+
 ### Todavía NO existe
 
-- Panel administrativo real para **seleccionar templates publicados** (`/admin/generate` es placeholder)
-- Formulario administrativo para completar campos y generar contratos
 - Render DOCX con datos del formulario
-- Generación PDF
+- Creación de `GeneratedDocument`
+- Conversión PDF
 - Descarga de PDF
 - Historial administrativo de documentos generados
+- Auditoría de generación o descarga
+- Persistencia de formularios validados
+- Reintentos o workflow de generación
 - Reemplazo de DOCX de una versión existente desde UI
 - Desarchivado de templates
 - Validación por magic bytes del contenido DOCX real
@@ -324,11 +401,15 @@ Publicación y archivado de templates DOCX para abogados.
 
 - **Next.js 16:** convención `middleware` deprecada a favor de `proxy` — revisar antes de actualizar despliegue.
 - **Build Turbopack:** advertencia por `process.cwd()` en `src/lib/storage/paths.ts` al importar módulos de storage desde Server Actions.
-- **Mensaje de éxito efímero:** tras publicar o archivar, `revalidatePath` puede refrescar la página antes de que el banner del formulario cliente sea visible; el cambio de estado en BD/UI es correcto.
+- **Mensajes de éxito efímeros:** tras publicar, archivar o prevalidar, `revalidatePath` puede refrescar la página antes de que el banner del formulario cliente sea visible; el cambio de estado o la validación en BD es correcta.
+- **Inputs nativos y validación server-side:** `<input type="date">` y `<input type="number">` bloquean algunos valores inválidos en el navegador antes de llegar al servidor; la validación server-side cubre esos casos si los datos llegan.
+- **Sin reset del formulario admin:** tras prevalidación exitosa, el formulario conserva los valores ingresados.
+- **DATE en formulario admin:** formato `YYYY-MM-DD` (input HTML `type="date"`).
+- **NUMBER en formulario admin:** formato HTML estándar (`type="number"`, `step="any"`); sin formato local (ej. separador de miles).
 - **Sin `archivedAt` en schema:** la fecha de archivado queda en `AuditLog.createdAt` del evento `TEMPLATE_ARCHIVED`.
-- **Datos de prueba locales:** templates y DOCX creados en desarrollo no se versionan; pueden acumularse en BD y `storage/`.
+- **Datos de prueba y E2E locales:** templates, DOCX y resultados de pruebas E2E no se versionan; pueden acumularse en BD y `storage/`.
 - **`MAX_LABEL_LENGTH` duplicado:** la constante (120) existe en servicios de campos y publicación; podría extraerse a módulo compartido.
-- **Lista de templates:** sin paginación.
+- **Listas de templates:** sin paginación ni búsqueda (abogado y admin).
 - **Validación DOCX:** por extensión, tamaño y MIME; sin verificación de magic bytes del contenido real.
 - **Atomicidad upload + BD:** compensación manual si falla storage o Prisma tras crear registros.
 - **Re-extracción destructiva:** campos huérfanos (ausentes en el DOCX) se eliminan de la BD con su configuración (solo en versiones `DRAFT`).
@@ -336,6 +417,14 @@ Publicación y archivado de templates DOCX para abogados.
 - **Extracción OOXML:** entidades XML en `<w:t>` no se decodifican explícitamente; placeholders partidos entre archivos XML distintos no se detectan.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 5: panel administrativo y prevalidación de formulario
+
+- Servicios `listPublishedTemplates` y `getPublishedTemplateForForm` con DTOs seguros
+- Listado admin en `/admin/generate` y formulario dinámico en `/admin/generate/[templateId]`
+- Validador `validateTemplateFormData` y Server Action `validateContractFormAction`
+- Prevalidación server-side sin `GeneratedDocument`, sin DOCX/PDF y sin auditoría
+- Validación E2E: listado, formulario, validaciones positivas/negativas, archivado en flujo y seguridad por rol
 
 ### 2026-06-17 — Fase 4: publicación y archivado de templates DOCX
 
