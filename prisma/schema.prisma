@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  LAWYER
+  ADMIN_STAFF
+}
+
+enum TemplateStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum TemplateVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum TemplateFieldType {
+  TEXT
+  DATE
+  NUMBER
+  BOOLEAN
+}
+
+enum GeneratedDocumentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  contractTemplates  ContractTemplate[]  @relation("TemplateCreator")
+  generatedDocuments GeneratedDocument[] @relation("DocumentGenerator")
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model ContractTemplate {
+  id          String         @id @default(cuid())
+  name        String
+  description String?
+  status      TemplateStatus @default(DRAFT)
+  createdById String         @map("created_by_id")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  createdBy User                      @relation("TemplateCreator", fields: [createdById], references: [id])
+  versions  ContractTemplateVersion[]
+
+  @@map("contract_templates")
+}
+
+model ContractTemplateVersion {
+  id          String                @id @default(cuid())
+  templateId  String                @map("template_id")
+  version     Int
+  status      TemplateVersionStatus @default(DRAFT)
+  docxPath    String?               @map("docx_path")
+  publishedAt DateTime?             @map("published_at")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  template           ContractTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  fields             TemplateField[]
+  generatedDocuments GeneratedDocument[]
+
+  @@unique([templateId, version])
+  @@map("contract_template_versions")
+}
+
+model TemplateField {
+  id           String            @id @default(cuid())
+  versionId    String            @map("version_id")
+  key          String
+  label        String
+  fieldType    TemplateFieldType @default(TEXT) @map("field_type")
+  required     Boolean           @default(false)
+  displayOrder Int               @default(0) @map("display_order")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  version ContractTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, key])
+  @@map("template_fields")
+}
+
+model GeneratedDocument {
+  id            String                  @id @default(cuid())
+  versionId     String                  @map("version_id")
+  generatedById String                  @map("generated_by_id")
+  status        GeneratedDocumentStatus @default(PENDING)
+  formData      Json                    @map("form_data")
+  pdfPath       String?                 @map("pdf_path")
+  createdAt     DateTime                @default(now()) @map("created_at")
+  updatedAt     DateTime                @updatedAt @map("updated_at")
+
+  version     ContractTemplateVersion @relation(fields: [versionId], references: [id])
+  generatedBy User                    @relation("DocumentGenerator", fields: [generatedById], references: [id])
+
+  @@map("generated_documents")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
