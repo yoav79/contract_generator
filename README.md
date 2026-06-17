@@ -2,7 +2,7 @@
 
 Aplicación para generación controlada de contratos legales.
 
-Los abogados gestionan templates DOCX con placeholders. El personal administrativo completa formularios dinámicos sobre templates publicados y genera documentos DOCX y PDF privados. La descarga queda para una fase posterior.
+Los abogados gestionan templates DOCX con placeholders. El personal administrativo completa formularios dinámicos sobre templates publicados, genera documentos DOCX y PDF privados y descarga el PDF resultante de forma segura (solo PDF, nunca DOCX editable).
 
 ## Requisitos
 
@@ -245,6 +245,59 @@ Abre [http://localhost:3000](http://localhost:3000).
 
 **Validación E2E realizada:** generación desde UI como `ADMIN_STAFF`, `GeneratedDocument` `COMPLETED`, `docxPath` y `pdfPath` no nulos, `document.docx` y `document.pdf` en storage privado, PDF válido (`%PDF-`), auditorías `GENERATED_DOCUMENT_CREATED` y `GENERATED_DOCUMENT_PDF_CREATED` sin PII, TEXT vacío bloquea antes de nuevo `GeneratedDocument`, reintento PDF sobre documento existente rechazado sin sobrescritura, `LAWYER` bloqueado en rutas admin, HTML sin rutas privadas; `npm run lint` y `npm run build` OK.
 
+**Nota:** Desde Fase 8, si el PDF fue creado, la UI muestra el botón **Descargar PDF** (ver sección Fase 8).
+
+## Probar descarga PDF (Fase 8)
+
+1. Ejecuta migraciones y seed (ver secciones anteriores).
+2. Confirma que `soffice` está disponible (`which soffice`, `soffice --version`).
+3. Como abogado, crea y **publica** un template con placeholders `{{nombre_cliente}}`, `{{fecha_inicio}}`, `{{monto_total}}`, `{{acepta_terminos}}` y campos configurados (`TEXT`, `DATE`, `NUMBER`, `BOOLEAN` requeridos). Si no hay templates `PUBLISHED` en dev, republica uno existente o crea uno nuevo.
+4. Inicia sesión como `admin@local.dev`.
+5. Entra a [http://localhost:3000/admin/generate](http://localhost:3000/admin/generate).
+6. Pulsa **Completar formulario** en un template `PUBLISHED`.
+7. Completa el formulario y pulsa **Generar documento**.
+8. Confirma en la UI:
+   - Mensaje: *Documento generado correctamente. El PDF está listo para descarga.* (si la conversión PDF fue exitosa)
+   - `generatedDocumentId` visible
+   - **Estado PDF:** `PDF creado` (o `PDF pendiente` si falló solo la conversión)
+   - Botón **Descargar PDF** visible solo si `PDF creado`; enlace a `/admin/generated-documents/{generatedDocumentId}/download`
+   - Sin `docxPath`, `pdfPath`, rutas `storage/` ni rutas absolutas en el HTML
+   - Sin preview inline ni PDF embebido
+9. Pulsa **Descargar PDF** y confirma que el archivo descargado es un PDF válido.
+
+**Verificación HTTP de descarga:**
+
+- `GET /admin/generated-documents/{generatedDocumentId}/download` con sesión `ADMIN_STAFF`
+- Status `200`
+- `Content-Type: application/pdf`
+- `Content-Disposition: attachment; filename="documento-{generatedDocumentId}.pdf"`
+- `Cache-Control: no-store, private`
+- `Pragma: no-cache`
+- Archivo con tamaño > 0 y magic bytes `%PDF-`
+
+**Verificación en PostgreSQL** (`npm run db:studio`):
+
+- `GeneratedDocument` con `status === COMPLETED`
+- `docxPath` y `pdfPath` no nulos (si PDF creado)
+- `formData` con valores normalizados del formulario
+- `AuditLog` con `GENERATED_DOCUMENT_CREATED`, `GENERATED_DOCUMENT_PDF_CREATED` y `GENERATED_DOCUMENT_DOWNLOADED` — metadata sin PII ni rutas
+
+**Verificación en storage:**
+
+- `storage/generated/{generatedDocumentId}/document.docx` con tamaño > 0
+- `storage/generated/{generatedDocumentId}/document.pdf` con tamaño > 0 y magic bytes `%PDF-` (si PDF creado)
+
+**Seguridad esperada:**
+
+- Solo `ADMIN_STAFF` accede a `/admin/*` y al endpoint de descarga; `LAWYER` redirigido a `/dashboard`
+- La UI y las respuestas **no** exponen `docxPath`, `pdfPath`, rutas `storage/` ni contenido DOCX/PDF en JSON/HTML
+- No se acepta ruta de archivo por query ni body; la descarga usa solo `generatedDocumentId`
+- No hay endpoint ni enlace para descargar DOCX editable
+- Documento inexistente o no descargable → `404` con mensaje genérico
+- Auditoría de descarga **no** incluye `formData`, rutas ni valores de campos
+
+**Validación E2E realizada:** admin generó documento, PDF creado, botón **Descargar PDF** visible con `href` por `generatedDocumentId`, descarga HTTP `200`, magic bytes `%PDF-`, headers correctos, `GeneratedDocument` `COMPLETED` con `docxPath` y `pdfPath` no nulos, auditorías `GENERATED_DOCUMENT_CREATED`, `GENERATED_DOCUMENT_PDF_CREATED` y `GENERATED_DOCUMENT_DOWNLOADED`, `LAWYER` bloqueado/redirigido, ID inexistente devuelve `404`, endpoints DOCX alternativos devuelven `404`, HTML sin `docxPath`/`pdfPath`/`storage/`; `npm run lint` y `npm run build` OK.
+
 ## Storage local privado
 
 Los archivos DOCX de templates se guardan en desarrollo bajo:
@@ -263,6 +316,7 @@ storage/generated/{generatedDocumentId}/document.pdf
 - La carpeta `storage/` está **ignorada por Git** (salvo `storage/.gitkeep`).
 - Los DOCX y PDF reales **no deben versionarse** en el repositorio.
 - No se sirven archivos desde `public/`.
+- La descarga de PDF se sirve solo vía Route Handler autenticado (`/admin/generated-documents/[generatedDocumentId]/download`); el cliente nunca recibe la ruta relativa almacenada en BD.
 
 `storage/temp/` — directorios temporales únicos para conversión DOCX → PDF (LibreOffice); se limpian tras cada conversión.
 
@@ -276,16 +330,19 @@ src/
       lawyer/templates/         # Gestión de templates DOCX (abogado)
         [templateId]/           # Detalle, extracción, edición, publicación y archivado
       admin/generate/           # Panel administrativo: listado, formulario y generación DOCX+PDF
-        [templateId]/           # Formulario dinámico, botón Generar documento y estado PDF
+        [templateId]/           # Formulario dinámico, botón Generar documento, estado PDF y descarga
+      admin/generated-documents/  # Descarga segura de PDF generado (Route Handler)
+        [generatedDocumentId]/
+          download/             # GET — attachment application/pdf
   lib/
     auth/                       # Sesión, roles, autorización
     forms/                      # Validación y normalización de datos para DOCX
-    storage/                    # Rutas y guardado privado DOCX/PDF (templates y generados)
+    storage/                    # Rutas y guardado/lectura privado DOCX/PDF (templates y generados)
     audit/                      # Registro de auditoría
     db.ts                       # Cliente Prisma compartido
   server/
     templates/                  # Creación, extracción, campos, publicación, archivado y consulta publicada
-    documents/                  # Render DOCX, conversión PDF (soffice), orquestadores de generación
+    documents/                  # Render DOCX, conversión PDF (soffice), generación y descarga segura
 prisma/
   schema.prisma                 # Modelos del dominio
 storage/                        # Archivos locales (gitignored)
@@ -623,13 +680,98 @@ Conversión privada DOCX → PDF desde templates publicados para personal admini
 - Sin cola ni control de concurrencia para procesos LibreOffice
 - Templates dev pueden requerir republicación manual para pruebas repetidas
 
+### Fase 8 — completada
+
+Descarga segura solo PDF para documentos generados por personal administrativo.
+
+**Alcance:**
+
+- Descarga segura **solo PDF** (nunca DOCX editable)
+- Route Handler `GET /admin/generated-documents/[generatedDocumentId]/download`
+- Descarga basada en `generatedDocumentId`, no en rutas de archivo
+- Lectura interna de `pdfPath` desde BD y filesystem privado (`readStoredPdf`)
+- Auditoría `GENERATED_DOCUMENT_DOWNLOADED` sin PII
+- Sin nueva migración Prisma (schema existente suficiente)
+
+**Flujo admin:**
+
+1. `/admin/generate` — listado de templates publicados
+2. Seleccionar template → `/admin/generate/[templateId]`
+3. Completar formulario dinámico
+4. Pulsar **Generar documento**
+5. Si PDF creado: mensaje de éxito, `generatedDocumentId` visible, **Estado PDF:** `PDF creado`
+6. Pulsar **Descargar PDF** → descarga como `attachment`
+
+**Pipeline server-side (descarga):**
+
+| Paso | Módulo |
+|------|--------|
+| Validar sesión y rol | Route Handler + `downloadGeneratedPdf` |
+| Cargar `GeneratedDocument` y validar `COMPLETED` + `pdfPath` | `downloadGeneratedPdf` |
+| Leer PDF privado | `readStoredPdf` |
+| Auditar descarga | `AUDIT_ACTIONS.GENERATED_DOCUMENT_DOWNLOADED` |
+| Responder binario | Route Handler `GET` |
+
+**Headers de descarga:**
+
+- `Content-Type: application/pdf`
+- `Content-Disposition: attachment; filename="documento-{generatedDocumentId}.pdf"`
+- `Cache-Control: no-store, private`
+- `Pragma: no-cache`
+
+**Seguridad:**
+
+- Solo `ADMIN_STAFF`; cualquier admin puede descargar cualquier documento `COMPLETED` con PDF
+- `LAWYER` bloqueado/redirigido por middleware al intentar `/admin/*`
+- `pdfPath`, `docxPath` y rutas `storage/` **no** se exponen en UI, JSON ni mensajes de error
+- No se devuelve contenido PDF en JSON/HTML; solo binario en respuesta HTTP del Route Handler
+- No se acepta path por query ni body
+- No se sirve DOCX editable; no hay endpoint DOCX equivalente
+- Documento inexistente, no `COMPLETED`, sin `pdfPath` o archivo ausente → `404` genérico
+
+**Auditoría:**
+
+- `GENERATED_DOCUMENT_DOWNLOADED` por cada descarga exitosa (`GET` con respuesta `200`)
+- Metadata permitida: `generatedDocumentId`, `templateId`, `versionId`
+- Metadata prohibida: `formData`, valores de campos, `docxPath`, `pdfPath`, `storage/generated`, rutas absolutas, contenido DOCX/PDF
+
+**Fuera de alcance (Fase 8):**
+
+- Descarga DOCX
+- Preview inline de PDF
+- Historial/listado administrativo de documentos generados
+- Búsqueda/paginación
+- Reintento PDF desde UI
+- Enlaces firmados o expiración
+- Storage externo
+- Envío por email
+
+**Validación E2E realizada:**
+
+- Admin generó documento; PDF creado; botón **Descargar PDF** visible
+- Descarga HTTP `200`; magic bytes `%PDF-`; headers correctos
+- `GeneratedDocument` `COMPLETED` con `docxPath` y `pdfPath` no nulos
+- Auditorías `GENERATED_DOCUMENT_CREATED`, `GENERATED_DOCUMENT_PDF_CREATED` y `GENERATED_DOCUMENT_DOWNLOADED`
+- `LAWYER` bloqueado/redirigido; ID inexistente devuelve `404`
+- Endpoints DOCX alternativos devuelven `404`; HTML sin rutas privadas
+
+**Riesgos y deuda (Fase 8):**
+
+- Cada `GET` exitoso genera una auditoría de descarga (descargas repetidas = múltiples logs)
+- Caso `pdfPath` null no probado empíricamente por falta de registro `COMPLETED` sin PDF en BD local
+- El PDF contiene PII del formulario; headers `no-store` son obligatorios
+- Posible desincronización BD/storage produce `404` genérico sin revelar la causa
+- Sin historial/listado: solo descarga inmediata tras generar en la misma sesión de formulario
+
 ### Todavía NO existe
 
-- Descarga de PDF o DOCX
+- Descarga de DOCX editable
 - Historial administrativo de documentos generados
-- Endpoint de archivo para servir documentos generados
-- Auditoría de descarga
-- Reintentos o workflow de generación con UI
+- Preview inline de PDF
+- Reintento manual de PDF desde UI
+- Búsqueda/paginación de documentos generados
+- Enlaces firmados o expiración de descarga
+- Storage externo o envío por email
 - Reemplazo de DOCX de una versión existente desde UI
 - Desarchivado de templates
 - Validación por magic bytes del contenido DOCX real
@@ -662,8 +804,22 @@ Conversión privada DOCX → PDF desde templates publicados para personal admini
 - **Fase 7 — PDF pendiente sin reintento UI:** si falla solo la conversión, el DOCX queda válido pero no hay botón para reintentar PDF.
 - **Fase 7 — concurrencia LibreOffice:** múltiples conversiones paralelas pueden competir por el mismo motor headless.
 - **Fase 7 — templates dev:** puede no haber templates `PUBLISHED`; republicar o crear uno para pruebas manuales.
+- **Fase 8 — auditoría por descarga:** cada `GET` exitoso al endpoint de descarga registra `GENERATED_DOCUMENT_DOWNLOADED`.
+- **Fase 8 — PDF con PII:** el PDF generado contiene datos del formulario; la respuesta usa `Cache-Control: no-store, private`.
+- **Fase 8 — desincronización BD/storage:** si `pdfPath` existe en BD pero el archivo fue eliminado, la descarga devuelve `404` genérico.
+- **Fase 8 — sin historial:** no hay listado admin de documentos generados; la descarga está limitada al resultado inmediato del formulario.
+- **Fase 8 — pdfPath null sin prueba E2E:** no había registro `COMPLETED` sin PDF en BD local al validar el caso negativo.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 8: descarga segura solo PDF
+
+- `readStoredPdf` y orquestador `downloadGeneratedPdf`
+- Route Handler `GET /admin/generated-documents/[generatedDocumentId]/download`
+- UI con botón **Descargar PDF** condicionado a `pdfCreated`
+- Headers seguros (`application/pdf`, `attachment`, `no-store`, `private`)
+- Auditoría `GENERATED_DOCUMENT_DOWNLOADED` sin PII
+- Validación E2E: generación, descarga HTTP, PostgreSQL, storage, auditorías, bloqueo `LAWYER`, `404` en ID inexistente, sin DOCX ni rutas en HTML
 
 ### 2026-06-17 — Fase 7: conversión privada DOCX → PDF
 

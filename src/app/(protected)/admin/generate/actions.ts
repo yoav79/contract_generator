@@ -43,7 +43,7 @@ const TEMPLATE_UNAVAILABLE_MESSAGE =
 const SUCCESS_VALIDATE_MESSAGE =
   "Los datos del formulario son válidos. La generación del documento se implementará en una fase posterior.";
 const SUCCESS_GENERATE_WITH_PDF_MESSAGE =
-  "Documento generado correctamente. El PDF fue creado y la descarga se implementará en una fase posterior.";
+  "Documento generado correctamente. El PDF está listo para descarga.";
 const SUCCESS_GENERATE_WITHOUT_PDF_MESSAGE =
   "Documento generado correctamente, pero no se pudo crear el PDF. La conversión podrá reintentarse en una fase posterior.";
 const GENERIC_VALIDATE_ERROR_MESSAGE =

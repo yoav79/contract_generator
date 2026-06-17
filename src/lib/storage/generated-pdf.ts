@@ -1,4 +1,4 @@
-import { mkdir, rmdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -9,6 +9,7 @@ import {
 
 const GENERATED_PDF_FILE_NAME = "document.pdf";
 const GENERATED_STORAGE_PREFIX = "storage/generated/";
+const PDF_MAGIC_BYTES = "%PDF-";
 
 export type SaveGeneratedPdfParams = {
   generatedDocumentId: string;
@@ -53,6 +54,40 @@ export async function saveGeneratedPdf(
   await writeFile(absoluteFilePath, pdfBuffer);
 
   return toRelativeStoragePath(absoluteFilePath);
+}
+
+export async function readStoredPdf(relativePath: string): Promise<Buffer> {
+  assertGeneratedRelativePath(relativePath);
+
+  const absoluteFilePath = resolveRelativeStoragePath(relativePath);
+
+  let buffer: Buffer;
+
+  try {
+    buffer = await readFile(absoluteFilePath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+
+    if (code === "ENOENT") {
+      throw new Error("El archivo PDF almacenado no existe.");
+    }
+
+    if (code === "EISDIR") {
+      throw new Error("La ruta no corresponde a un archivo PDF válido.");
+    }
+
+    throw new Error("No se pudo leer el archivo PDF almacenado.");
+  }
+
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error("El archivo PDF almacenado está vacío.");
+  }
+
+  if (buffer.subarray(0, PDF_MAGIC_BYTES.length).toString("ascii") !== PDF_MAGIC_BYTES) {
+    throw new Error("El archivo PDF almacenado no es válido.");
+  }
+
+  return buffer;
 }
 
 export async function removeGeneratedPdf(relativePath: string): Promise<void> {
