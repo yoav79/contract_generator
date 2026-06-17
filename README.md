@@ -822,7 +822,24 @@ Renovación visual y consola interna persistente. Ver `docs/fase-10-interfaz-vis
 - Refactor visual de dashboard, admin y lawyer sin cambiar Server Actions ni permisos
 - Páginas internas integradas al shell (sin `<main>` anidado ni doble padding)
 
-**Pendiente antes de cierre final:** ajustes visuales menores, validación E2E manual documentada.
+**Pendiente antes de cierre final:** conectar métricas reales en dashboards (ver Fase 10b).
+
+### Fase 10b — Consola visual y dashboards por rol
+
+Rediseño de navegación y dashboards por rol con mockups temporales. Ver `docs/fase-10-interfaz-visual-y-consola.md` (subsección Fase 10b). Commit: `7d01a89`.
+
+**Alcance:**
+
+- Sidebar con **BrandMark** e iconos (lucide-react); badge «Plataforma legal»
+- **Navegación vertical** en desktop y mobile (sin chips horizontales)
+- Estado activo reforzado; badges de rol con color (abogado / administrativo)
+- **Dashboard abogado** (`LawyerDashboardPreview`): panel visual con métricas mock, acciones rápidas y flujo de trabajo
+- **Dashboard administrativo** (`AdminDashboardPreview`): panel visual equivalente
+- Mockups marcados como **«Ejemplo»** / **«Mock visual»**; disclaimer de vista preliminar
+- Sin backend nuevo, sin cambios Prisma, sin cambios Server Actions
+- Bootstrap sigue aislado al login
+
+> Los valores de los dashboards son ejemplos visuales y **no datos reales**.
 
 ### Fase 9 — completada
 
@@ -957,6 +974,14 @@ Historial/listado administrativo de documentos generados para personal administr
 - **Fase 9 — generatedByLabel:** puede exponer email interno del admin si `User.name` está vacío.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 10b: consola visual y dashboards por rol
+
+- BrandMark en sidebar; navegación vertical con iconos y estado activo reforzado
+- `LawyerDashboardPreview` y `AdminDashboardPreview` con mockups temporales etiquetados como «Ejemplo»
+- Disclaimer de vista preliminar; sin backend, Prisma ni Server Actions nuevos
+- Validación lint/build; admin y lawyer desktop/mobile; Bootstrap aislado al login
+- Commit: `feat(phase-10b): improve console navigation and role dashboards` (`7d01a89`)
 
 ### 2026-06-17 — Fase 10 (checkpoint): consola interna y login renovado
 
