@@ -2,7 +2,7 @@
 
 Aplicación para generación controlada de contratos legales.
 
-Los abogados gestionan templates DOCX con placeholders. El personal administrativo completa formularios dinámicos sobre templates publicados; la generación de PDF queda para fases posteriores.
+Los abogados gestionan templates DOCX con placeholders. El personal administrativo completa formularios dinámicos sobre templates publicados y genera documentos DOCX privados. La conversión a PDF y la descarga quedan para fases posteriores.
 
 ## Requisitos
 
@@ -150,8 +150,9 @@ Abre [http://localhost:3000](http://localhost:3000).
 4. Entra a [http://localhost:3000/admin/generate](http://localhost:3000/admin/generate).
 5. Confirma que solo aparecen templates `PUBLISHED` (no `DRAFT` ni `ARCHIVED`).
 6. Pulsa **Completar formulario** en un template publicado.
-7. Completa el formulario dinámico y pulsa **Validar datos**.
-8. Confirma el mensaje: *Los datos del formulario son válidos. La generación del documento se implementará en una fase posterior.*
+7. Completa el formulario dinámico y pulsa **Validar datos** (prevalidación sin persistencia; ver Fase 6 para generación DOCX).
+
+**Nota:** Desde Fase 6 el botón principal del formulario es **Generar documento** (ver sección Fase 6).
 
 **Seguridad esperada:**
 
@@ -161,19 +162,59 @@ Abre [http://localhost:3000](http://localhost:3000).
 
 **Validación E2E realizada:** listado admin, exclusión `DRAFT`/`ARCHIVED`, formulario dinámico, prevalidación exitosa, validaciones negativas, `BOOLEAN` sin marcar como `false`, template archivado durante flujo, seguridad `LAWYER`, HTML sin rutas privadas; `npm run lint` y `npm run build` OK.
 
+## Probar generación DOCX (Fase 6)
+
+1. Ejecuta migraciones y seed (ver secciones anteriores).
+2. Como abogado, crea y **publica** un template con placeholders `{{nombre_cliente}}`, `{{fecha_inicio}}`, `{{monto_total}}`, `{{acepta_terminos}}` y campos configurados (`TEXT`, `DATE`, `NUMBER`, `BOOLEAN` requeridos).
+3. Inicia sesión como `admin@local.dev`.
+4. Entra a [http://localhost:3000/admin/generate](http://localhost:3000/admin/generate).
+5. Pulsa **Completar formulario** en un template `PUBLISHED`.
+6. Completa el formulario y pulsa **Generar documento**.
+7. Confirma:
+   - Mensaje: *Documento generado correctamente. La conversión a PDF y descarga se implementarán en una fase posterior.*
+   - `generatedDocumentId` visible en la UI
+   - Sin botón de descarga, sin PDF y sin rutas privadas en el HTML
+
+**Verificación en PostgreSQL** (`npm run db:studio`):
+
+- `GeneratedDocument` con `status === COMPLETED`
+- `docxPath` relativo bajo `storage/generated/{generatedDocumentId}/document.docx`
+- `pdfPath === null`
+- `formData` con valores normalizados del formulario
+- `AuditLog` con `action === GENERATED_DOCUMENT_CREATED` y metadata sin PII
+
+**Verificación en storage:**
+
+- Archivo `storage/generated/{generatedDocumentId}/document.docx` con tamaño > 0
+- Placeholders del template reemplazados en el DOCX generado (sin exponer contenido completo en UI)
+
+**Seguridad esperada:**
+
+- Solo `ADMIN_STAFF` accede a `/admin/*`; `LAWYER` redirigido a `/dashboard`.
+- La UI **no** expone `docxPath`, rutas `storage/` ni contenido DOCX.
+- La auditoría de generación **no** incluye `formData`, rutas ni valores de campos.
+
+**Validación E2E realizada:** generación exitosa como `ADMIN_STAFF`, `GeneratedDocument` `COMPLETED`, `pdfPath` null, DOCX en `storage/generated/`, audit log `GENERATED_DOCUMENT_CREATED` sin PII, validaciones negativas (TEXT vacío, NUMBER inválido vía validador), template archivado bloquea generación, `LAWYER` bloqueado en rutas admin, HTML sin rutas privadas; `npm run lint` y `npm run build` OK.
+
 ## Storage local privado
 
-Los archivos DOCX subidos se guardan en desarrollo bajo:
+Los archivos DOCX de templates se guardan en desarrollo bajo:
 
 ```text
 storage/templates/{templateId}/v1/source.docx
+```
+
+Los DOCX generados por el personal administrativo se guardan bajo:
+
+```text
+storage/generated/{generatedDocumentId}/document.docx
 ```
 
 - La carpeta `storage/` está **ignorada por Git** (salvo `storage/.gitkeep`).
 - Los DOCX reales **no deben versionarse** en el repositorio.
 - No se sirven archivos desde `public/`.
 
-Rutas futuras previstas (aún sin uso completo): `storage/generated/`, `storage/temp/`.
+Ruta prevista sin uso completo en MVP: `storage/temp/`.
 
 ## Estructura base
 
@@ -184,17 +225,17 @@ src/
     (protected)/                # Rutas protegidas por rol
       lawyer/templates/         # Gestión de templates DOCX (abogado)
         [templateId]/           # Detalle, extracción, edición, publicación y archivado
-      admin/generate/           # Panel administrativo: listado y formulario
-        [templateId]/           # Detalle y formulario dinámico con prevalidación
+      admin/generate/           # Panel administrativo: listado, formulario y generación DOCX
+        [templateId]/           # Formulario dinámico y botón Generar documento
   lib/
     auth/                       # Sesión, roles, autorización
-    forms/                      # Validación de datos de formulario administrativo
-    storage/                    # Rutas y guardado privado de DOCX
+    forms/                      # Validación y normalización de datos para DOCX
+    storage/                    # Rutas y guardado privado de DOCX (templates y generados)
     audit/                      # Registro de auditoría
     db.ts                       # Cliente Prisma compartido
   server/
     templates/                  # Creación, extracción, campos, publicación, archivado y consulta publicada
-    documents/                  # Extracción de placeholders DOCX; render/PDF pendientes
+    documents/                  # Render DOCX, orquestador de generación; PDF pendiente
 prisma/
   schema.prisma                 # Modelos del dominio
 storage/                        # Archivos locales (gitignored)
@@ -383,16 +424,80 @@ Panel administrativo para templates publicados y prevalidación de formulario di
 
 **Validación E2E realizada:** listado admin, exclusión `DRAFT`/`ARCHIVED`, formulario dinámico por tipo, prevalidación exitosa sin `GeneratedDocument` ni `AuditLog` nuevo, validaciones negativas, `BOOLEAN` sin marcar válido como `false`, error al enviar tras archivar template, redirección de `LAWYER` en rutas admin, HTML sin rutas privadas.
 
+### Fase 6 — completada
+
+Generación privada de DOCX desde templates publicados para personal administrativo.
+
+**Alcance:**
+
+- Generación privada de DOCX desde templates `PUBLISHED`
+- Creación y actualización de `GeneratedDocument` (`PENDING` → `COMPLETED` / `FAILED`)
+- Storage privado en `storage/generated/{generatedDocumentId}/document.docx`
+- Auditoría `GENERATED_DOCUMENT_CREATED` sin PII
+
+**Dependencia:** [docxtemplater](https://docxtemplater.com/) `^3.68.7` — render de placeholders `{{snake_case}}` sobre DOCX (con `pizzip` ya presente desde Fase 3).
+
+**Migración:** `20260617162657_add_generated_document_docx_path` — columna `GeneratedDocument.docxPath` (`docx_path`).
+
+**Flujo admin:**
+
+1. `/admin/generate` — listado de templates publicados
+2. Seleccionar template → `/admin/generate/[templateId]`
+3. Completar formulario dinámico (`TEXT`, `DATE`, `NUMBER`, `BOOLEAN`)
+4. Pulsar **Generar documento**
+5. Mensaje de éxito con `generatedDocumentId` (sin rutas ni descarga)
+
+**Pipeline server-side:**
+
+| Paso | Módulo |
+|------|--------|
+| Cargar template publicado (con `docxPath` interno) | `getPublishedTemplateForGeneration` |
+| Validar formulario | `validateTemplateFormData` |
+| Normalizar valores para DOCX | `mapValuesForDocxRender` |
+| Leer template fuente | `readStoredDocx` |
+| Renderizar DOCX | `renderDocx` |
+| Guardar DOCX generado | `saveGeneratedDocx` |
+| Orquestar BD + storage + auditoría | `generateContractDocument` |
+| Conectar UI | `generateContractDocumentAction` + `ContractForm` |
+
+**Seguridad:**
+
+- `docxPath` **no** se expone en UI ni en respuestas de Server Actions al cliente
+- Rutas `storage/` y contenido DOCX **no** se devuelven al navegador
+- Auditoría `GENERATED_DOCUMENT_CREATED`: metadata con `templateId`, `versionId`, `generatedDocumentId`, `fieldCount` — **sin** `formData`, rutas ni valores de campos
+
+**Fuera de alcance (Fase 6):**
+
+- PDF
+- Descarga de documentos
+- Historial administrativo de documentos generados
+- Endpoint de archivo / serving de DOCX
+
+**Validación E2E realizada:**
+
+- `GeneratedDocument` `COMPLETED` con `pdfPath` null
+- Archivo DOCX generado en `storage/generated/` con placeholders reemplazados
+- `AuditLog` `GENERATED_DOCUMENT_CREATED` sin PII
+- `LAWYER` bloqueado en `/admin/generate` y `/admin/generate/[templateId]`
+- Validaciones negativas sin nuevos `GeneratedDocument` (TEXT vacío; NUMBER inválido vía validador server-side)
+- Template archivado durante flujo: error seguro sin generación
+
+**Riesgos y deuda (Fase 6):**
+
+- Template E2E usado en pruebas quedó `ARCHIVED` — republicar o crear otro template para repetir pruebas manuales
+- `renderDocx` sin modo strict de placeholders (placeholders sin valor pueden quedar sin reemplazar según docxtemplater)
+- Compensación filesystem/BD best-effort si falla tras escribir el DOCX generado
+- Doble validación en action y orquestador (`validateTemplateFormData` en ambos)
+- NUMBER inválido limitado en UI por `<input type="number">` del navegador
+
 ### Todavía NO existe
 
-- Render DOCX con datos del formulario
-- Creación de `GeneratedDocument`
 - Conversión PDF
-- Descarga de PDF
+- Descarga de PDF o DOCX
 - Historial administrativo de documentos generados
-- Auditoría de generación o descarga
-- Persistencia de formularios validados
-- Reintentos o workflow de generación
+- Endpoint de archivo para servir documentos generados
+- Auditoría de descarga
+- Reintentos o workflow de generación con UI
 - Reemplazo de DOCX de una versión existente desde UI
 - Desarchivado de templates
 - Validación por magic bytes del contenido DOCX real
@@ -415,8 +520,22 @@ Panel administrativo para templates publicados y prevalidación de formulario di
 - **Re-extracción destructiva:** campos huérfanos (ausentes en el DOCX) se eliminan de la BD con su configuración (solo en versiones `DRAFT`).
 - **TemplateField:** sin columna `updatedAt`; historial de ediciones solo vía `AuditLog`.
 - **Extracción OOXML:** entidades XML en `<w:t>` no se decodifican explícitamente; placeholders partidos entre archivos XML distintos no se detectan.
+- **Fase 6 — template E2E archivado:** el template usado en validación E2E de generación puede quedar en `ARCHIVED`; crear o republicar uno para pruebas manuales repetidas.
+- **Fase 6 — render sin strict:** `renderDocx` no fuerza error si quedan placeholders sin reemplazar en el DOCX generado.
+- **Fase 6 — compensación storage/BD:** si el archivo se escribe pero falla la actualización en BD, se intenta eliminar el DOCX y marcar `FAILED` (best-effort).
+- **Fase 6 — doble validación:** `validateTemplateFormData` corre en la Server Action y en el orquestador.
+- **Fase 6 — NUMBER en UI:** `<input type="number">` impide enviar strings no numéricos desde el navegador; la validación server-side cubre el caso si los datos llegan.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 6: generación privada de DOCX
+
+- Dependencia `docxtemplater` y migración `GeneratedDocument.docxPath`
+- `renderDocx`, `mapValuesForDocxRender`, `saveGeneratedDocx` / `removeGeneratedDocx`
+- `getPublishedTemplateForGeneration` y orquestador `generateContractDocument`
+- Server Action `generateContractDocumentAction` y botón **Generar documento** en admin
+- Auditoría `GENERATED_DOCUMENT_CREATED` sin PII
+- Validación E2E: `COMPLETED`, storage `generated/`, audit log, seguridad `LAWYER`, sin PDF ni descarga
 
 ### 2026-06-17 — Fase 5: panel administrativo y prevalidación de formulario
 

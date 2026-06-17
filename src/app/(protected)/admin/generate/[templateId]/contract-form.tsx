@@ -6,8 +6,8 @@ import { useActionState } from "react";
 import { MAX_TEXT_FIELD_LENGTH } from "@/lib/forms/validate-template-form-data";
 
 import {
-  validateContractFormAction,
-  type ContractFormActionState,
+  generateContractDocumentAction,
+  type GenerateContractDocumentActionState,
 } from "../actions";
 
 export type ContractFormField = {
@@ -25,9 +25,9 @@ type ContractFormProps = {
 
 export function ContractForm({ templateId, fields }: ContractFormProps) {
   const [state, formAction, isPending] = useActionState<
-    ContractFormActionState | undefined,
+    GenerateContractDocumentActionState | undefined,
     FormData
-  >(validateContractFormAction, undefined);
+  >(generateContractDocumentAction, undefined);
 
   return (
     <form action={formAction}>
@@ -109,12 +109,17 @@ export function ContractForm({ templateId, fields }: ContractFormProps) {
       ) : null}
 
       {state?.success === true ? (
-        <p role="status">{state.message}</p>
+        <div role="status">
+          <p>{state.message}</p>
+          <p>
+            ID del documento generado: <code>{state.generatedDocumentId}</code>
+          </p>
+        </div>
       ) : null}
 
       {fields.length > 0 ? (
         <button type="submit" disabled={isPending}>
-          {isPending ? "Validando…" : "Validar datos"}
+          {isPending ? "Generando…" : "Generar documento"}
         </button>
       ) : null}
     </form>

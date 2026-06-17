@@ -1,5 +1,4 @@
 import { convertToPdf } from "./convert-to-pdf";
-import { renderDocx } from "./render-docx";
 
 export type GenerateDocumentInput = {
   templateDocxPath: string;
@@ -15,24 +14,13 @@ export type GenerateDocumentResult = {
 
 /**
  * Orquesta render DOCX y conversión a PDF.
- * Implementación pendiente: hoy solo define el contrato del flujo.
+ * Implementación pendiente: el render DOCX puro vive en render-docx.ts;
+ * la orquestación completa se implementará en fases posteriores.
  */
 export async function generateDocument(
   input: GenerateDocumentInput,
 ): Promise<GenerateDocumentResult> {
-  await renderDocx({
-    templateDocxPath: input.templateDocxPath,
-    outputDocxPath: input.outputDocxPath,
-    values: input.values,
-  });
-
-  await convertToPdf({
-    sourceDocxPath: input.outputDocxPath,
-    outputPdfPath: input.outputPdfPath,
-  });
-
-  return {
-    docxPath: input.outputDocxPath,
-    pdfPath: input.outputPdfPath,
-  };
+  void convertToPdf;
+  void input;
+  throw new Error("generateDocument no está implementado.");
 }

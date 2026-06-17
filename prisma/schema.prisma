@@ -113,6 +113,7 @@ model GeneratedDocument {
   generatedById String                  @map("generated_by_id")
   status        GeneratedDocumentStatus @default(PENDING)
   formData      Json                    @map("form_data")
+  docxPath      String?                 @map("docx_path")
   pdfPath       String?                 @map("pdf_path")
   createdAt     DateTime                @default(now()) @map("created_at")
   updatedAt     DateTime                @updatedAt @map("updated_at")
