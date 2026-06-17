@@ -3,6 +3,23 @@ import { redirect } from "next/navigation";
 
 import { GeneratedDocumentStatus } from "@prisma/client";
 
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { canAccessPath } from "@/lib/auth/authorization";
 import { getSession, isAuthenticatedSession } from "@/lib/auth/session";
 import { listGeneratedDocumentsForAdmin } from "@/server/documents/list-generated-documents-for-admin";
@@ -12,6 +29,19 @@ function formatGeneratedAt(isoDate: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(isoDate));
+}
+
+function statusBadgeVariant(
+  status: GeneratedDocumentStatus,
+): "default" | "secondary" | "outline" | "destructive" {
+  switch (status) {
+    case GeneratedDocumentStatus.COMPLETED:
+      return "default";
+    case GeneratedDocumentStatus.FAILED:
+      return "destructive";
+    default:
+      return "secondary";
+  }
 }
 
 export default async function AdminGeneratedDocumentsPage() {
@@ -28,58 +58,77 @@ export default async function AdminGeneratedDocumentsPage() {
   const documents = await listGeneratedDocumentsForAdmin();
 
   return (
-    <main>
-      <p>
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <Button variant="ghost" className="w-fit" asChild>
         <Link href="/admin/generate">← Volver a generar contrato</Link>
-      </p>
+      </Button>
 
-      <h1>Documentos generados</h1>
-      <p>Últimos 50 documentos generados. La descarga disponible es solo PDF.</p>
-
-      {documents.length === 0 ? (
-        <div>
-          <p>No hay documentos generados todavía.</p>
-          <p>
-            <Link href="/admin/generate">Generar contrato</Link>
-          </p>
-        </div>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Fecha generación</th>
-              <th>Template</th>
-              <th>Versión</th>
-              <th>Generado por</th>
-              <th>Estado</th>
-              <th>PDF</th>
-            </tr>
-          </thead>
-          <tbody>
-            {documents.map((document) => (
-              <tr key={document.id}>
-                <td>{formatGeneratedAt(document.createdAt)}</td>
-                <td>{document.templateName}</td>
-                <td>{document.templateVersion}</td>
-                <td>{document.generatedByLabel}</td>
-                <td>{document.status}</td>
-                <td>
-                  {document.status === GeneratedDocumentStatus.COMPLETED &&
-                  document.pdfAvailable ? (
-                    <a
-                      href={`/admin/generated-documents/${document.id}/download`}
-                    >
-                      Descargar PDF
-                    </a>
-                  ) : (
-                    "PDF pendiente"
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </main>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">Documentos generados</CardTitle>
+          <CardDescription>
+            Últimos 50 documentos generados. La descarga disponible es solo PDF.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {documents.length === 0 ? (
+            <div className="flex flex-col gap-4 rounded-lg border border-dashed p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                No hay documentos generados todavía.
+              </p>
+              <Button className="mx-auto w-fit" asChild>
+                <Link href="/admin/generate">Generar contrato</Link>
+              </Button>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha generación</TableHead>
+                  <TableHead>Template</TableHead>
+                  <TableHead>Versión</TableHead>
+                  <TableHead>Generado por</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>PDF</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {documents.map((document) => (
+                  <TableRow key={document.id}>
+                    <TableCell>
+                      {formatGeneratedAt(document.createdAt)}
+                    </TableCell>
+                    <TableCell>{document.templateName}</TableCell>
+                    <TableCell>{document.templateVersion}</TableCell>
+                    <TableCell>{document.generatedByLabel}</TableCell>
+                    <TableCell>
+                      <Badge variant={statusBadgeVariant(document.status)}>
+                        {document.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {document.status === GeneratedDocumentStatus.COMPLETED &&
+                      document.pdfAvailable ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <a
+                            href={`/admin/generated-documents/${document.id}/download`}
+                          >
+                            Descargar PDF
+                          </a>
+                        </Button>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          PDF pendiente
+                        </span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

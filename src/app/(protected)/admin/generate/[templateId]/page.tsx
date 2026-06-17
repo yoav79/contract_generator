@@ -1,6 +1,15 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { canAccessPath } from "@/lib/auth/authorization";
 import { getSession, isAuthenticatedSession } from "@/lib/auth/session";
 import { getPublishedTemplateForForm } from "@/server/templates/get-published-template-for-form";
@@ -44,28 +53,32 @@ export default async function AdminGenerateTemplatePage({
   }
 
   return (
-    <main>
-      <p>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <Button variant="ghost" className="w-fit" asChild>
         <Link href="/admin/generate">← Volver a templates publicados</Link>
-      </p>
+      </Button>
 
-      <h1>Completar formulario</h1>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="text-xl">Completar formulario</CardTitle>
+            <Badge variant="secondary">v{template.version}</Badge>
+          </div>
+          <CardDescription>{template.name}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1 text-sm text-muted-foreground">
+          {template.description ? (
+            <p>Descripción: {template.description}</p>
+          ) : null}
+          <p>Publicado: {formatPublishedAt(template.publishedAt)}</p>
+          <p>Campos: {template.fields.length}</p>
+        </CardContent>
+      </Card>
 
-      <section>
-        <h2>Template</h2>
-        <p>Nombre: {template.name}</p>
-        {template.description ? (
-          <p>Descripción: {template.description}</p>
-        ) : null}
-        <p>Versión: {template.version}</p>
-        <p>Publicado: {formatPublishedAt(template.publishedAt)}</p>
-        <p>Campos: {template.fields.length}</p>
-      </section>
-
-      <section>
-        <h2>Datos del contrato</h2>
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-medium">Datos del contrato</h2>
         <ContractForm templateId={template.id} fields={template.fields} />
       </section>
-    </main>
+    </div>
   );
 }

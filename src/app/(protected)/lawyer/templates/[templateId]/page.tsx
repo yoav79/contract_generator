@@ -3,6 +3,16 @@ import { notFound, redirect } from "next/navigation";
 
 import { TemplateStatus, TemplateVersionStatus } from "@prisma/client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { canAccessPath } from "@/lib/auth/authorization";
 import { getSession, isAuthenticatedSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
@@ -50,6 +60,30 @@ function areFieldLabelsValid(
 
     return trimmedLabel.length > 0 && trimmedLabel.length <= MAX_LABEL_LENGTH;
   });
+}
+
+function templateStatusVariant(
+  status: TemplateStatus,
+): "default" | "secondary" | "outline" | "destructive" {
+  switch (status) {
+    case TemplateStatus.PUBLISHED:
+      return "default";
+    case TemplateStatus.ARCHIVED:
+      return "secondary";
+    default:
+      return "outline";
+  }
+}
+
+function versionStatusVariant(
+  status: TemplateVersionStatus,
+): "default" | "secondary" | "outline" {
+  switch (status) {
+    case TemplateVersionStatus.PUBLISHED:
+      return "default";
+    default:
+      return "outline";
+  }
 }
 
 export default async function TemplateDetailPage({
@@ -105,46 +139,72 @@ export default async function TemplateDetailPage({
     labelsValid;
 
   return (
-    <main>
-      <p>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <Button variant="ghost" className="w-fit" asChild>
         <Link href="/lawyer/templates">← Volver a templates</Link>
-      </p>
+      </Button>
 
-      <h1>{template.name}</h1>
-      <p>Email: {session.email}</p>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-medium tracking-tight">
+            {template.name}
+          </h1>
+          {version ? (
+            <Badge variant="secondary">v{version.version}</Badge>
+          ) : null}
+          <Badge variant={templateStatusVariant(template.status)}>
+            {template.status}
+          </Badge>
+          {version ? (
+            <Badge variant={versionStatusVariant(version.status)}>
+              {version.status}
+            </Badge>
+          ) : null}
+        </div>
+      </div>
 
       {isArchived ? (
-        <p role="status">Template archivado. No se pueden realizar cambios.</p>
+        <div role="status">
+          <Alert>
+            <AlertDescription>
+              Template archivado. No se pueden realizar cambios.
+            </AlertDescription>
+          </Alert>
+        </div>
       ) : null}
 
-      <section>
-        <h2>Metadata del template</h2>
-        <p>Descripción: {template.description ?? "—"}</p>
-        <p>Estado del template: {template.status}</p>
-        <p>Versión actual: {version?.version ?? "—"}</p>
-        <p>Estado de la versión: {version?.status ?? "—"}</p>
-        {version?.publishedAt ? (
-          <p>Publicado: {formatDateTime(version.publishedAt)}</p>
-        ) : null}
-        <p>Archivo original: {version?.originalFileName ?? "—"}</p>
-        <p>Tamaño: {formatFileSizeKb(version?.fileSizeBytes)}</p>
-        <p>SHA-256: {formatPartialSha256(version?.docxSha256)}</p>
-        <p>Creado: {formatDateTime(template.createdAt)}</p>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Metadata del template</CardTitle>
+          <CardDescription>
+            Descripción: {template.description ?? "—"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1 text-sm text-muted-foreground">
+          {version?.publishedAt ? (
+            <p>Publicado: {formatDateTime(version.publishedAt)}</p>
+          ) : null}
+          <p>Archivo original: {version?.originalFileName ?? "—"}</p>
+          <p>Tamaño: {formatFileSizeKb(version?.fileSizeBytes)}</p>
+          <p>SHA-256: {formatPartialSha256(version?.docxSha256)}</p>
+          <p>Creado: {formatDateTime(template.createdAt)}</p>
+        </CardContent>
+      </Card>
 
-      {isDraft ? (
-        <section>
-          <h2>Extracción de placeholders</h2>
-          <ExtractFieldsForm templateId={template.id} />
-        </section>
-      ) : null}
+      {isDraft ? <ExtractFieldsForm templateId={template.id} /> : null}
 
-      <section>
-        <h2>Campos detectados</h2>
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-medium">Campos detectados</h2>
         {fields.length === 0 ? (
-          <p>Aún no hay placeholders extraídos.</p>
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">
+                Aún no hay placeholders extraídos.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
-          <ul>
+          <ul className="flex flex-col gap-4">
             {fields.map((field) => (
               <li key={field.id}>
                 {isDraft ? (
@@ -160,15 +220,19 @@ export default async function TemplateDetailPage({
                     }}
                   />
                 ) : (
-                  <TemplateFieldReadonly
-                    field={{
-                      key: field.key,
-                      label: field.label,
-                      fieldType: field.fieldType,
-                      required: field.required,
-                      displayOrder: field.displayOrder,
-                    }}
-                  />
+                  <Card>
+                    <CardContent className="pt-6">
+                      <TemplateFieldReadonly
+                        field={{
+                          key: field.key,
+                          label: field.label,
+                          fieldType: field.fieldType,
+                          required: field.required,
+                          displayOrder: field.displayOrder,
+                        }}
+                      />
+                    </CardContent>
+                  </Card>
                 )}
               </li>
             ))}
@@ -177,27 +241,28 @@ export default async function TemplateDetailPage({
       </section>
 
       {isDraft ? (
-        <section>
-          <h2>Publicar template</h2>
-          <ul>
-            <li>DOCX asociado: {hasDocx ? "Sí" : "No"}</li>
-            <li>Campos detectados: {fieldCount}</li>
-            <li>Labels válidos: {labelsValid ? "Sí" : "No"}</li>
-            <li>
-              Estado versión: {version?.status ?? "—"}
-            </li>
-          </ul>
-          <PublishTemplateForm
-            templateId={template.id}
-            disabled={!canPublish}
-          />
-        </section>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Publicar template</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              <li>DOCX asociado: {hasDocx ? "Sí" : "No"}</li>
+              <li>Campos detectados: {fieldCount}</li>
+              <li>Labels válidos: {labelsValid ? "Sí" : "No"}</li>
+              <li>Estado versión: {version?.status ?? "—"}</li>
+            </ul>
+            <PublishTemplateForm
+              templateId={template.id}
+              disabled={!canPublish}
+            />
+          </CardContent>
+        </Card>
       ) : null}
 
       {isPublished ? (
-        <section>
-          <h2>Archivar template</h2>
-          <p>
+        <section className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
             Este template está publicado
             {version?.publishedAt
               ? ` desde ${formatDateTime(version.publishedAt)}`
@@ -208,6 +273,6 @@ export default async function TemplateDetailPage({
           <ArchiveTemplateForm templateId={template.id} />
         </section>
       ) : null}
-    </main>
+    </div>
   );
 }

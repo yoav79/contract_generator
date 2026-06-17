@@ -1,6 +1,18 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { TemplateStatus, TemplateVersionStatus } from "@prisma/client";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { canAccessPath } from "@/lib/auth/authorization";
 import { getSession, isAuthenticatedSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
@@ -30,6 +42,30 @@ function formatCreatedAt(date: Date): string {
   }).format(date);
 }
 
+function templateStatusVariant(
+  status: TemplateStatus,
+): "default" | "secondary" | "outline" | "destructive" {
+  switch (status) {
+    case TemplateStatus.PUBLISHED:
+      return "default";
+    case TemplateStatus.ARCHIVED:
+      return "secondary";
+    default:
+      return "outline";
+  }
+}
+
+function versionStatusVariant(
+  status: TemplateVersionStatus,
+): "default" | "secondary" | "outline" {
+  switch (status) {
+    case TemplateVersionStatus.PUBLISHED:
+      return "default";
+    default:
+      return "outline";
+  }
+}
+
 export default async function LawyerTemplatesPage() {
   const session = await getSession();
 
@@ -53,52 +89,86 @@ export default async function LawyerTemplatesPage() {
   });
 
   return (
-    <main>
-      <h1>Templates (Abogado)</h1>
-      <p>Email: {session.email}</p>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-medium tracking-tight">
+          Templates de contrato
+        </h1>
+      </div>
 
-      <section>
-        <h2>Crear template</h2>
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-medium">Crear template</h2>
         <TemplateCreateForm />
       </section>
 
-      <section>
-        <h2>Mis templates</h2>
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-medium">Mis templates</h2>
+
         {templates.length === 0 ? (
-          <p>No hay templates todavía.</p>
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">
+                No hay templates todavía.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
-          <ul>
+          <ul className="flex flex-col gap-4">
             {templates.map((template) => {
               const version = template.versions[0];
 
               return (
                 <li key={template.id}>
-                  <h3>{template.name}</h3>
-                  <p>Descripción: {template.description ?? "—"}</p>
-                  <p>Estado del template: {template.status}</p>
-                  <p>Versión: {version?.version ?? "—"}</p>
-                  <p>Estado de la versión: {version?.status ?? "—"}</p>
-                  <p>
-                    Archivo original: {version?.originalFileName ?? "—"}
-                  </p>
-                  <p>
-                    Tamaño: {formatFileSizeKb(version?.fileSizeBytes)}
-                  </p>
-                  <p>
-                    SHA-256: {formatPartialSha256(version?.docxSha256)}
-                  </p>
-                  <p>Creado: {formatCreatedAt(template.createdAt)}</p>
-                  <p>
-                    <Link href={`/lawyer/templates/${template.id}`}>
-                      Ver detalle
-                    </Link>
-                  </p>
+                  <Card>
+                    <CardHeader>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <CardTitle className="text-base">
+                          {template.name}
+                        </CardTitle>
+                        {version ? (
+                          <Badge variant="secondary">v{version.version}</Badge>
+                        ) : null}
+                        <Badge variant={templateStatusVariant(template.status)}>
+                          {template.status}
+                        </Badge>
+                        {version ? (
+                          <Badge
+                            variant={versionStatusVariant(version.status)}
+                          >
+                            {version.status}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <CardDescription>
+                        Descripción: {template.description ?? "—"}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-1 text-sm text-muted-foreground">
+                      <p>
+                        Archivo original: {version?.originalFileName ?? "—"}
+                      </p>
+                      <p>
+                        Tamaño: {formatFileSizeKb(version?.fileSizeBytes)}
+                      </p>
+                      <p>
+                        SHA-256: {formatPartialSha256(version?.docxSha256)}
+                      </p>
+                      <p>Creado: {formatCreatedAt(template.createdAt)}</p>
+                    </CardContent>
+                    <CardFooter>
+                      <Button variant="outline" asChild>
+                        <Link href={`/lawyer/templates/${template.id}`}>
+                          Ver detalle
+                        </Link>
+                      </Button>
+                    </CardFooter>
+                  </Card>
                 </li>
               );
             })}
           </ul>
         )}
       </section>
-    </main>
+    </div>
   );
 }
