@@ -365,8 +365,10 @@ storage/generated/{generatedDocumentId}/document.pdf
 ```text
 src/
   app/                          # App Router (Next.js)
-    (auth)/login/               # Login
-    (protected)/                # Rutas protegidas por rol
+    (auth)/login/               # Login (Bootstrap aislado a esta ruta)
+    (protected)/                # Rutas protegidas por rol (layout con consola)
+      layout.tsx                # AppShell persistente: sidebar, topbar, logout
+      dashboard/                # Entrada a la consola por rol
       lawyer/templates/         # Gestión de templates DOCX (abogado)
         [templateId]/           # Detalle, extracción, edición, publicación y archivado
       admin/generate/           # Panel administrativo: listado templates, formulario y generación DOCX+PDF
@@ -375,8 +377,12 @@ src/
         page.tsx                # Listado últimos 50 documentos generados
         [generatedDocumentId]/
           download/             # GET — attachment application/pdf
+  components/
+    ui/                         # Primitivos shadcn/Tailwind
+    layout/                     # AppShell y ProtectedNav
   lib/
     auth/                       # Sesión, roles, autorización
+    utils.ts                    # Utilidad cn() para clases Tailwind
     forms/                      # Validación y normalización de datos para DOCX
     storage/                    # Rutas y guardado/lectura privado DOCX/PDF (templates y generados)
     audit/                      # Registro de auditoría
@@ -804,6 +810,20 @@ Descarga segura solo PDF para documentos generados por personal administrativo.
 - Posible desincronización BD/storage produce `404` genérico sin revelar la causa
 - Sin historial/listado: solo descarga inmediata tras generar en la misma sesión de formulario
 
+### Fase 10 — checkpoint UIX (no cierre final)
+
+Renovación visual y consola interna persistente. Ver `docs/fase-10-interfaz-visual-y-consola.md`.
+
+**Alcance del checkpoint:**
+
+- Tailwind v4 + shadcn/ui; componentes en `src/components/ui/`
+- Login rediseñado; Bootstrap solo en `/login`; estilos `.auth-*` scoped
+- `(protected)/layout.tsx` con sidebar, topbar, logout y navegación por rol
+- Refactor visual de dashboard, admin y lawyer sin cambiar Server Actions ni permisos
+- Páginas internas integradas al shell (sin `<main>` anidado ni doble padding)
+
+**Pendiente antes de cierre final:** ajustes visuales menores, validación E2E manual documentada.
+
 ### Fase 9 — completada
 
 Historial/listado administrativo de documentos generados para personal administrativo.
@@ -937,6 +957,15 @@ Historial/listado administrativo de documentos generados para personal administr
 - **Fase 9 — generatedByLabel:** puede exponer email interno del admin si `User.name` está vacío.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 10 (checkpoint): consola interna y login renovado
+
+- Tailwind/shadcn base; primitivos UI y `src/lib/utils.ts`
+- Login con paleta clara; Bootstrap aislado a `/login`
+- AppShell + ProtectedNav; layout protegido persistente
+- Dashboard con cards por rol; refactors visuales admin/lawyer
+- Integración al shell: sin wrappers `main` redundantes ni doble padding
+- Checkpoint: `feat(phase-10): introduce UI shell and refreshed login experience`
 
 ### 2026-06-17 — Fase 9: historial administrativo de documentos generados
 
