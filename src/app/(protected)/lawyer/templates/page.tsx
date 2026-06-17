@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { canAccessPath } from "@/lib/auth/authorization";
@@ -87,6 +88,11 @@ export default async function LawyerTemplatesPage() {
                     SHA-256: {formatPartialSha256(version?.docxSha256)}
                   </p>
                   <p>Creado: {formatCreatedAt(template.createdAt)}</p>
+                  <p>
+                    <Link href={`/lawyer/templates/${template.id}`}>
+                      Ver detalle
+                    </Link>
+                  </p>
                 </li>
               );
             })}

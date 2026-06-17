@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { isAdminStaff, isLawyer } from "@/lib/auth/authorization";
@@ -20,12 +21,12 @@ export default async function DashboardPage() {
       <nav>
         {isLawyer(session.role) ? (
           <p>
-            <a href="/lawyer/templates">Gestionar templates</a>
+            <Link href="/lawyer/templates">Gestionar templates</Link>
           </p>
         ) : null}
         {isAdminStaff(session.role) ? (
           <p>
-            <a href="/admin/generate">Generar contrato</a>
+            <Link href="/admin/generate">Generar contrato</Link>
           </p>
         ) : null}
       </nav>

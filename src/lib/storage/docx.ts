@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, rmdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -137,6 +137,26 @@ export async function saveUploadedDocx(
     fileSizeBytes,
     mimeType,
   };
+}
+
+export async function readStoredDocx(relativePath: string): Promise<Buffer> {
+  const absoluteFilePath = resolveRelativeStoragePath(relativePath);
+
+  try {
+    return await readFile(absoluteFilePath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+
+    if (code === "ENOENT") {
+      throw new Error("El archivo DOCX almacenado no existe.");
+    }
+
+    if (code === "EISDIR") {
+      throw new Error("La ruta no corresponde a un archivo DOCX válido.");
+    }
+
+    throw error;
+  }
 }
 
 export async function removeStoredDocx(relativePath: string): Promise<void> {

@@ -98,6 +98,20 @@ Abre [http://localhost:3000](http://localhost:3000).
 - `ADMIN_STAFF` no puede acceder a `/lawyer/templates` — el middleware redirige a `/dashboard`.
 - `docxPath` y rutas privadas de storage **no** se exponen al cliente; solo metadata segura en la UI.
 
+## Probar extracción y campos (Fase 3)
+
+1. Crea un template DOCX con placeholders en formato `{{snake_case}}` (ver sección Fase 3).
+2. Abre **Ver detalle** → [http://localhost:3000/lawyer/templates/{templateId}](http://localhost:3000/lawyer/templates).
+3. Pulsa **Extraer placeholders** y confirma contadores (`validCount`, `createdCount`, etc.).
+4. Edita cada campo: `label`, `fieldType`, `required`, `displayOrder` (la `key` es solo lectura).
+5. Vuelve a extraer sobre el mismo DOCX y confirma que las configuraciones editadas se preservan.
+
+**Seguridad esperada:**
+
+- Solo el abogado propietario del template puede extraer y editar campos.
+- `ADMIN_STAFF` no accede a `/lawyer/templates/*` ni ve formularios de extracción/edición.
+- `docxPath`, rutas de `storage/` y contenido del DOCX **no** aparecen en la UI.
+
 ## Storage local privado
 
 Los archivos DOCX subidos se guardan en desarrollo bajo:
@@ -120,6 +134,7 @@ src/
     (auth)/login/               # Login
     (protected)/                # Rutas protegidas por rol
       lawyer/templates/         # Gestión de templates DOCX (abogado)
+        [templateId]/           # Detalle, extracción y edición de campos
       admin/generate/           # Placeholder administrativo
   lib/
     auth/                       # Sesión, roles, autorización
@@ -127,8 +142,8 @@ src/
     audit/                      # Registro de auditoría
     db.ts                       # Cliente Prisma compartido
   server/
-    templates/                  # Orquestación de creación de templates
-    documents/                  # Stubs para lógica documental futura
+    templates/                  # Creación, extracción y actualización de campos
+    documents/                  # Extracción de placeholders DOCX; render/PDF pendientes
 prisma/
   schema.prisma                 # Modelos del dominio
 storage/                        # Archivos locales (gitignored)
@@ -166,13 +181,66 @@ storage/                        # Archivos locales (gitignored)
 - Auditoría: `TEMPLATE_CREATED`, `TEMPLATE_VERSION_CREATED`, `TEMPLATE_UPLOAD_STORED`
 - Lista de templates propios del abogado autenticado
 
+### Fase 3 — completada
+
+Extracción y configuración de campos DOCX para abogados.
+
+**Dependencia:** [pizzip](https://github.com/open-xml-templating/pizzip) — descompresión de DOCX (ZIP OOXML).
+
+**Formato permitido de placeholders:** `{{snake_case}}` — letras minúsculas, números y guion bajo; debe empezar con letra.
+
+Ejemplos válidos:
+
+- `{{nombre_cliente}}`
+- `{{fecha_inicio}}`
+- `{{monto_total}}`
+
+Ejemplos inválidos (reportados, no persistidos):
+
+- `{{NombreCliente}}` — mayúsculas
+- `{{ campo }}` — espacios
+- `{{campo-extra}}` — guiones
+- `{{123}}` — empieza con número
+
+**Flujo:**
+
+- Extracción **manual** desde `/lawyer/templates/[templateId]` (botón **Extraer placeholders**).
+- Lectura privada del DOCX desde `storage/` vía `readStoredDocx` (servidor).
+- Procesamiento de `word/document.xml`, `word/header*.xml` y `word/footer*.xml`.
+- Soporte básico para placeholders partidos entre nodos `<w:t>` (concatenación en orden).
+- Creación/sincronización de `TemplateField` por versión en estado `DRAFT`.
+
+**Configuración editable por campo:**
+
+- `label`, `fieldType` (`TEXT`, `DATE`, `NUMBER`, `BOOLEAN`), `required`, `displayOrder`
+- `key` **no editable** (identificador del placeholder en el DOCX)
+
+**Política de re-extracción (MVP):**
+
+- Keys existentes en DOCX → se **preservan** (`label`, `fieldType`, `required`, `displayOrder`).
+- Keys nuevas en DOCX → se **crean** con defaults.
+- Keys ausentes en DOCX → se **eliminan** como huérfanas.
+
+**Auditoría:**
+
+- `TEMPLATE_FIELDS_EXTRACTED` — extracción/sincronización de campos
+- `TEMPLATE_FIELD_UPDATED` — edición de configuración de un campo
+
+**Seguridad:**
+
+- Solo `LAWYER` propietario del template (`createdById`).
+- `ADMIN_STAFF` bloqueado en rutas `/lawyer/*`.
+- `docxPath` y rutas privadas **no** se exponen en UI ni respuestas de Server Actions.
+
 ### Todavía NO existe
 
-- Extracción de placeholders desde DOCX
 - Publicación de templates (`PUBLISHED` / flujo de publicación)
+- Formulario administrativo real para generar contratos (`/admin/generate` es placeholder)
+- Render DOCX con datos del formulario
 - Generación PDF
-- Descarga de DOCX
-- Panel administrativo real para generar contratos (`/admin/generate` es placeholder)
+- Descarga de PDF
+- Reemplazo de DOCX de una versión existente desde UI
+- Validación por magic bytes del contenido DOCX real
 
 ## Riesgos y deuda técnica
 
@@ -181,8 +249,20 @@ storage/                        # Archivos locales (gitignored)
 - **Lista de templates:** sin paginación.
 - **Validación DOCX:** por extensión, tamaño y MIME; sin verificación de magic bytes del contenido real.
 - **Atomicidad upload + BD:** compensación manual si falla storage o Prisma tras crear registros.
+- **Re-extracción destructiva:** campos huérfanos (ausentes en el DOCX) se eliminan de la BD con su configuración.
+- **TemplateField:** sin columna `updatedAt`; historial de ediciones solo vía `AuditLog`.
+- **Extracción OOXML:** entidades XML en `<w:t>` no se decodifican explícitamente; placeholders partidos entre archivos XML distintos no se detectan.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 3: extracción y configuración de campos DOCX
+
+- Dependencia `pizzip`, `readStoredDocx` y extractor `extractPlaceholdersFromDocxBuffer`
+- Orquestadores `extractTemplateFields` y `updateTemplateField`
+- Página detalle `/lawyer/templates/[templateId]` con extracción manual y edición de campos
+- Server Actions `extractTemplateFieldsAction` y `updateTemplateFieldAction`
+- Auditoría `TEMPLATE_FIELDS_EXTRACTED` y `TEMPLATE_FIELD_UPDATED`
+- Validación E2E: edición, re-extracción con preservación y política de huérfanos
 
 ### 2026-06-17 — Fase 2: templates DOCX
 
