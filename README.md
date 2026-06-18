@@ -975,6 +975,15 @@ Historial/listado administrativo de documentos generados para personal administr
 
 ## Historial de cambios
 
+### 2026-06-17 — Fase 10e: detalle de template abogado (flujo DRAFT)
+
+- Reorganización visual del detalle: header, avisos, cards Resumen/Documento/Flujo
+- Flujo DRAFT corregido: extraer placeholders → configurar campos → publicar
+- Copy de guardado individual; empty state orienta a extraer primero
+- Botones principales azules (Extraer, Guardar campo, Publicar)
+- Validación E2E: POST guardar campo con persistencia, estados PUBLISHED/ARCHIVED, mobile
+- Commit: `feat(phase-10e): improve template detail workflow` (`b87eec5`)
+
 ### 2026-06-17 — Fase 10b: consola visual y dashboards por rol
 
 - BrandMark en sidebar; navegación vertical con iconos y estado activo reforzado
