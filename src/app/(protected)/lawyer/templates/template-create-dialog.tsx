@@ -18,14 +18,26 @@ import { TemplateCreateForm } from "./template-create-form";
 
 type TemplateCreateDialogProps = {
   className?: string;
+  defaultOpen?: boolean;
 };
 
 const primaryBlueButtonClassName =
   "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600/50 disabled:opacity-50";
 
-export function TemplateCreateDialog({ className }: TemplateCreateDialogProps) {
-  const [open, setOpen] = useState(false);
+export function TemplateCreateDialog({
+  className,
+  defaultOpen = false,
+}: TemplateCreateDialogProps) {
+  const [open, setOpen] = useState(defaultOpen);
   const router = useRouter();
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+
+    if (!nextOpen && defaultOpen) {
+      router.replace("/lawyer/templates", { scroll: false });
+    }
+  }
 
   function handleSuccess(templateId: string) {
     setOpen(false);
@@ -33,7 +45,7 @@ export function TemplateCreateDialog({ className }: TemplateCreateDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button
           className={cn("shrink-0", primaryBlueButtonClassName, className)}

@@ -4,6 +4,7 @@ import { AdminDashboardPreview } from "@/components/dashboard/admin-dashboard-pr
 import { LawyerDashboardPreview } from "@/components/dashboard/lawyer-dashboard-preview";
 import { isAdminStaff, isLawyer } from "@/lib/auth/authorization";
 import { getSession, isAuthenticatedSession } from "@/lib/auth/session";
+import { getLawyerDashboardStats } from "@/server/templates/get-lawyer-dashboard-stats";
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -13,7 +14,9 @@ export default async function DashboardPage() {
   }
 
   if (isLawyer(session.role)) {
-    return <LawyerDashboardPreview email={session.email} />;
+    const stats = await getLawyerDashboardStats(session.userId);
+
+    return <LawyerDashboardPreview email={session.email} stats={stats} />;
   }
 
   if (isAdminStaff(session.role)) {

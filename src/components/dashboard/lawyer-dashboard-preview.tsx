@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { Info } from "lucide-react";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,25 +10,54 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import type { LawyerDashboardStats } from "@/server/templates/get-lawyer-dashboard-stats";
 
 type LawyerDashboardPreviewProps = {
   email?: string;
+  stats: LawyerDashboardStats;
 };
 
-type MetricAccent = "emerald" | "cyan" | "blue" | "indigo";
+type MetricAccent = "slate" | "cyan" | "emerald" | "zinc";
 
-type MockMetric = {
-  title: string;
-  value: string;
-  accent: MetricAccent;
+const accentStyles: Record<
+  MetricAccent,
+  { card: string; value: string }
+> = {
+  slate: {
+    card: "border-slate-200 bg-gradient-to-br from-white to-slate-50/60",
+    value: "text-slate-900",
+  },
+  cyan: {
+    card: "border-cyan-100 bg-gradient-to-br from-white to-cyan-50/60",
+    value: "text-cyan-600",
+  },
+  emerald: {
+    card: "border-emerald-100 bg-gradient-to-br from-white to-emerald-50/60",
+    value: "text-emerald-600",
+  },
+  zinc: {
+    card: "border-zinc-200 bg-gradient-to-br from-white to-zinc-50/60",
+    value: "text-zinc-600",
+  },
 };
 
-const MOCK_METRICS: MockMetric[] = [
-  { title: "Templates activos", value: "12", accent: "emerald" },
-  { title: "Borradores", value: "3", accent: "cyan" },
-  { title: "Pendientes de publicación", value: "2", accent: "blue" },
-  { title: "Última actividad", value: "Hace 2 h", accent: "indigo" },
-];
+function templateStatusClassName(status: string): string {
+  switch (status) {
+    case "PUBLISHED":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    case "ARCHIVED":
+      return "border-zinc-200 bg-zinc-100 text-zinc-600";
+    default:
+      return "border-slate-200 bg-slate-50 text-slate-700";
+  }
+}
+
+function formatDateTime(iso: string): string {
+  return new Intl.DateTimeFormat("es", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(iso));
+}
 
 const WORKFLOW_STEPS = [
   "Subir DOCX",
@@ -38,33 +66,33 @@ const WORKFLOW_STEPS = [
   "Administrativos generan PDF",
 ] as const;
 
-const accentStyles: Record<
-  MetricAccent,
-  { card: string; value: string; badge: string }
-> = {
-  emerald: {
-    card: "border-emerald-100 bg-gradient-to-br from-white to-emerald-50/60",
-    value: "text-emerald-600",
-    badge: "bg-emerald-50 text-emerald-700 border-emerald-100",
-  },
-  cyan: {
-    card: "border-cyan-100 bg-gradient-to-br from-white to-cyan-50/60",
-    value: "text-cyan-600",
-    badge: "bg-cyan-50 text-cyan-700 border-cyan-100",
-  },
-  blue: {
-    card: "border-blue-100 bg-gradient-to-br from-white to-blue-50/60",
-    value: "text-blue-600",
-    badge: "bg-blue-50 text-blue-700 border-blue-100",
-  },
-  indigo: {
-    card: "border-indigo-100 bg-gradient-to-br from-white to-indigo-50/60",
-    value: "text-indigo-600",
-    badge: "bg-indigo-50 text-indigo-700 border-indigo-100",
-  },
-};
+export function LawyerDashboardPreview({
+  email,
+  stats,
+}: LawyerDashboardPreviewProps) {
+  const metricCards = [
+    {
+      title: "Total templates",
+      value: stats.totalTemplates,
+      accent: "slate" as const,
+    },
+    {
+      title: "Borradores",
+      value: stats.draftTemplates,
+      accent: "cyan" as const,
+    },
+    {
+      title: "Publicados",
+      value: stats.publishedTemplates,
+      accent: "emerald" as const,
+    },
+    {
+      title: "Archivados",
+      value: stats.archivedTemplates,
+      accent: "zinc" as const,
+    },
+  ];
 
-export function LawyerDashboardPreview({ email }: LawyerDashboardPreviewProps) {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div className="flex flex-col gap-1">
@@ -79,16 +107,8 @@ export function LawyerDashboardPreview({ email }: LawyerDashboardPreviewProps) {
         ) : null}
       </div>
 
-      <Alert className="border-blue-100 bg-blue-50/60 text-slate-700">
-        <Info className="text-blue-600" aria-hidden />
-        <AlertDescription className="text-slate-600">
-          Vista preliminar visual. Las métricas reales se conectarán en una fase
-          posterior.
-        </AlertDescription>
-      </Alert>
-
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {MOCK_METRICS.map((metric) => {
+        {metricCards.map((metric) => {
           const styles = accentStyles[metric.accent];
 
           return (
@@ -97,19 +117,9 @@ export function LawyerDashboardPreview({ email }: LawyerDashboardPreviewProps) {
               className={cn("border shadow-sm", styles.card)}
             >
               <CardHeader className="gap-2">
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-sm font-medium text-slate-700">
-                    {metric.title}
-                  </CardTitle>
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                      styles.badge,
-                    )}
-                  >
-                    Ejemplo
-                  </span>
-                </div>
+                <CardTitle className="text-sm font-medium text-slate-700">
+                  {metric.title}
+                </CardTitle>
                 <p
                   className={cn(
                     "text-2xl font-semibold tracking-tight",
@@ -118,14 +128,56 @@ export function LawyerDashboardPreview({ email }: LawyerDashboardPreviewProps) {
                 >
                   {metric.value}
                 </p>
-                <CardDescription className="text-xs">
-                  Mock visual — no representa datos reales.
-                </CardDescription>
               </CardHeader>
             </Card>
           );
         })}
       </div>
+
+      <p className="text-sm text-slate-600">
+        <span className="font-medium text-slate-800">Última actividad: </span>
+        {stats.lastActivityAt
+          ? formatDateTime(stats.lastActivityAt)
+          : "Sin actividad registrada"}
+      </p>
+
+      <Card className="border-slate-200 bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Últimos templates</CardTitle>
+          <CardDescription>
+            Tus plantillas más recientes por fecha de actualización.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {stats.recentTemplates.length === 0 ? (
+            <p className="text-sm text-slate-600">Aún no tienes templates.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-slate-200 rounded-lg border border-slate-200">
+              {stats.recentTemplates.map((template) => (
+                <li key={template.id}>
+                  <Link
+                    href={`/lawyer/templates/${template.id}`}
+                    className="flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <span className="font-medium text-slate-900">
+                      {template.name}
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                      <Badge
+                        variant="outline"
+                        className={templateStatusClassName(template.status)}
+                      >
+                        {template.status}
+                      </Badge>
+                      <span>{formatDateTime(template.updatedAt)}</span>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="border-slate-200 bg-white shadow-sm">
         <CardHeader>
@@ -137,12 +189,16 @@ export function LawyerDashboardPreview({ email }: LawyerDashboardPreviewProps) {
         <CardContent className="flex flex-col gap-3 sm:flex-row">
           <Button
             asChild
-            className="bg-blue-600 text-white hover:bg-blue-700"
+            className="bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600/50"
           >
             <Link href="/lawyer/templates">Ver templates</Link>
           </Button>
-          <Button asChild variant="outline" className="border-slate-200">
-            <Link href="/lawyer/templates">Crear template</Link>
+          <Button
+            asChild
+            variant="outline"
+            className="border-slate-200"
+          >
+            <Link href="/lawyer/templates?create=1">Crear template</Link>
           </Button>
         </CardContent>
       </Card>

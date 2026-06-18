@@ -10,8 +10,16 @@ import {
   type LawyerTemplateListItem,
 } from "./templates-list-panel";
 
-export default async function LawyerTemplatesPage() {
+type LawyerTemplatesPageProps = {
+  searchParams: Promise<{ create?: string }>;
+};
+
+export default async function LawyerTemplatesPage({
+  searchParams,
+}: LawyerTemplatesPageProps) {
   const session = await getSession();
+  const { create } = await searchParams;
+  const openCreateDialog = create === "1";
 
   if (!isAuthenticatedSession(session)) {
     redirect("/login");
@@ -59,7 +67,10 @@ export default async function LawyerTemplatesPage() {
             campos para generación documental.
           </p>
         </div>
-        <TemplateCreateDialog />
+        <TemplateCreateDialog
+          key={openCreateDialog ? "create-open" : "create-closed"}
+          defaultOpen={openCreateDialog}
+        />
       </header>
 
       <TemplatesListPanel templates={templateItems} />
