@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CardFooter } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 import {
   publishTemplateAction,
@@ -29,7 +30,16 @@ export function PublishTemplateForm({
     <form action={formAction}>
       <input type="hidden" name="templateId" value={templateId} />
       <CardFooter className="border-t px-0 pb-0">
-        <Button type="submit" disabled={disabled || isPending}>
+        <Button
+          type="submit"
+          disabled={disabled || isPending}
+          className={cn(
+            "disabled:opacity-50",
+            !disabled &&
+              !isPending &&
+              "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600/50",
+          )}
+        >
           {isPending ? "Publicando…" : "Publicar template"}
         </Button>
       </CardFooter>

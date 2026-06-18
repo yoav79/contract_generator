@@ -28,11 +28,13 @@ export function ExtractFieldsForm({ templateId }: ExtractFieldsFormProps) {
   >(extractTemplateFieldsAction, undefined);
 
   return (
-    <Card>
+    <Card className="border-slate-200 bg-white shadow-sm">
       <form action={formAction}>
         <input type="hidden" name="templateId" value={templateId} />
         <CardHeader>
-          <CardTitle className="text-base">Extracción de placeholders</CardTitle>
+          <CardTitle className="text-base text-slate-900">
+            Extracción de placeholders
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {state ? (
@@ -63,7 +65,11 @@ export function ExtractFieldsForm({ templateId }: ExtractFieldsFormProps) {
           ) : null}
         </CardContent>
         <CardFooter className="border-t">
-          <Button type="submit" disabled={isPending}>
+          <Button
+            type="submit"
+            disabled={isPending}
+            className="bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600/50 disabled:opacity-50"
+          >
             {isPending ? "Extrayendo…" : "Extraer placeholders"}
           </Button>
         </CardFooter>

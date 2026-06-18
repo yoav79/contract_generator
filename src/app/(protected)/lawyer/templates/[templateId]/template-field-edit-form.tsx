@@ -131,7 +131,11 @@ export function TemplateFieldEditForm({
           ) : null}
         </CardContent>
         <CardFooter className="border-t">
-          <Button type="submit" disabled={isPending}>
+          <Button
+            type="submit"
+            disabled={isPending}
+            className="bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600/50 disabled:opacity-50"
+          >
             {isPending ? "Guardando…" : "Guardar campo"}
           </Button>
         </CardFooter>
