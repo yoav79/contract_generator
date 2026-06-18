@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,21 @@ import {
 const fileInputClassName =
   "flex h-auto w-full min-w-0 cursor-pointer rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm transition-colors outline-none file:mr-3 file:inline-flex file:h-7 file:cursor-pointer file:items-center file:rounded-md file:border-0 file:bg-muted file:px-3 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/80 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30";
 
-export function TemplateCreateForm() {
+type TemplateCreateFormProps = {
+  onSuccess?: (templateId: string) => void;
+};
+
+export function TemplateCreateForm({ onSuccess }: TemplateCreateFormProps = {}) {
   const [state, formAction, isPending] = useActionState<
     CreateTemplateActionState | undefined,
     FormData
   >(createTemplateAction, undefined);
+
+  useEffect(() => {
+    if (state?.success && state.templateId && onSuccess) {
+      onSuccess(state.templateId);
+    }
+  }, [state, onSuccess]);
 
   return (
     <Card>
