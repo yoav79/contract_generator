@@ -822,7 +822,7 @@ Renovación visual y consola interna persistente. Ver `docs/fase-10-interfaz-vis
 - Refactor visual de dashboard, admin y lawyer sin cambiar Server Actions ni permisos
 - Páginas internas integradas al shell (sin `<main>` anidado ni doble padding)
 
-**Pendiente antes de cierre final:** conectar métricas reales en dashboards (ver Fase 10b).
+**Pendiente antes de cierre final:** conectar métricas reales en el dashboard administrativo (el de abogado se resolvió en Fase 10f).
 
 ### Fase 10b — Consola visual y dashboards por rol
 
@@ -839,7 +839,26 @@ Rediseño de navegación y dashboards por rol con mockups temporales. Ver `docs/
 - Sin backend nuevo, sin cambios Prisma, sin cambios Server Actions
 - Bootstrap sigue aislado al login
 
-> Los valores de los dashboards son ejemplos visuales y **no datos reales**.
+> Los valores del dashboard **administrativo** siguen siendo ejemplos visuales. El dashboard de abogado usa datos reales desde Fase 10f.
+
+### Fase 10f — Dashboard abogado con datos reales
+
+Métricas reales y quick actions conectadas al flujo existente de templates. Ver `docs/fase-10f-dashboard-abogado-datos-reales.md`. Commit: `523dc0e`.
+
+**Alcance:**
+
+- Servicio `getLawyerDashboardStats` filtrado por `createdById`
+- Cards: total, borradores, publicados, archivados; última actividad; últimos 5 templates con links
+- Quick action «Crear template» → `/lawyer/templates?create=1` (modal auto-abierto; URL limpia al cerrar)
+- Creación con DOCX real reutiliza `TemplateCreateForm` y redirect a detalle sin cambios en Server Actions
+- Dashboard admin sin cambios; `ADMIN_STAFF` sigue bloqueado en rutas `/lawyer/*`
+
+**Seguridad:**
+
+- DTO del dashboard sin `docxPath`, `pdfPath`, rutas `storage/` ni SHA-256 completo
+- Solo templates del abogado autenticado en métricas y listado reciente
+
+**Validación E2E realizada:** dashboard sin mocks, conteos vs `/lawyer/templates`, modal deep link, creación DOCX, dashboard actualizado tras crear, admin sin regresión; `npm run lint` y `npm run build` OK.
 
 ### Fase 9 — completada
 
@@ -974,6 +993,14 @@ Historial/listado administrativo de documentos generados para personal administr
 - **Fase 9 — generatedByLabel:** puede exponer email interno del admin si `User.name` está vacío.
 
 ## Historial de cambios
+
+### 2026-06-17 — Fase 10f: dashboard abogado con métricas reales
+
+- Servicio `getLawyerDashboardStats` con conteos y últimos templates por `createdById`
+- Dashboard abogado sin mocks: cards reales, última actividad, lista reciente con links
+- Quick action «Crear template» con deep link `?create=1` y limpieza de URL al cerrar modal
+- Validación E2E: creación DOCX desde dashboard, redirect a detalle, admin sin regresión
+- Commit: `feat(phase-10f): lawyer dashboard with real stats and create modal deep link` (`523dc0e`)
 
 ### 2026-06-17 — Fase 10e: detalle de template abogado (flujo DRAFT)
 
