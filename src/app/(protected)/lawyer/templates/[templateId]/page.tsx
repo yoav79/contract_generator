@@ -23,8 +23,7 @@ import { cn } from "@/lib/utils";
 import { ArchiveTemplateForm } from "./archive-template-form";
 import { ExtractFieldsForm } from "./extract-fields-form";
 import { PublishTemplateForm } from "./publish-template-form";
-import { TemplateFieldEditForm } from "./template-field-edit-form";
-import { TemplateFieldReadonly } from "./template-field-readonly";
+import { TemplateFieldsPanel } from "./template-fields-panel";
 
 type TemplateDetailPageProps = {
   params: Promise<{ templateId: string }>;
@@ -372,75 +371,11 @@ export default async function TemplateDetailPage({
         </section>
       ) : null}
 
-      <section className="flex flex-col gap-4">
-        <Card className="border-slate-200 bg-white shadow-sm">
-          <CardHeader>
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-base text-slate-900">
-                Campos detectados
-              </CardTitle>
-              <CardDescription className="text-slate-600">
-                {fieldCount} campo{fieldCount === 1 ? "" : "s"}
-              </CardDescription>
-            </div>
-            {isDraft ? (
-              <p className="text-sm text-slate-600">
-                Cada campo se guarda individualmente.
-              </p>
-            ) : null}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {fields.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
-                <p className="text-sm font-medium text-slate-900">
-                  {isDraft
-                    ? "Todavía no hay campos detectados."
-                    : "No hay campos configurados."}
-                </p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {isDraft
-                    ? "Primero extrae los placeholders del DOCX."
-                    : "Este template no tiene campos configurados."}
-                </p>
-              </div>
-            ) : (
-              <ul className="flex flex-col gap-4">
-                {fields.map((field) => (
-                  <li key={field.id}>
-                    {isDraft ? (
-                      <TemplateFieldEditForm
-                        templateId={template.id}
-                        field={{
-                          id: field.id,
-                          key: field.key,
-                          label: field.label,
-                          fieldType: field.fieldType,
-                          required: field.required,
-                          displayOrder: field.displayOrder,
-                        }}
-                      />
-                    ) : (
-                      <Card className="border-slate-200 bg-slate-50/50 shadow-none">
-                        <CardContent className="pt-6">
-                          <TemplateFieldReadonly
-                            field={{
-                              key: field.key,
-                              label: field.label,
-                              fieldType: field.fieldType,
-                              required: field.required,
-                              displayOrder: field.displayOrder,
-                            }}
-                          />
-                        </CardContent>
-                      </Card>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </section>
+      <TemplateFieldsPanel
+        templateId={template.id}
+        fields={fields}
+        isDraft={isDraft}
+      />
 
       {isDraft ? (
         <section className="flex flex-col gap-4">
