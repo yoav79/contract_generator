@@ -20,6 +20,9 @@ type TemplateCreateDialogProps = {
   className?: string;
 };
 
+const primaryBlueButtonClassName =
+  "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600/50 disabled:opacity-50";
+
 export function TemplateCreateDialog({ className }: TemplateCreateDialogProps) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -33,10 +36,7 @@ export function TemplateCreateDialog({ className }: TemplateCreateDialogProps) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
-          className={cn(
-            "shrink-0 bg-blue-600 text-white hover:bg-blue-700",
-            className,
-          )}
+          className={cn("shrink-0", primaryBlueButtonClassName, className)}
         >
           Crear template
         </Button>

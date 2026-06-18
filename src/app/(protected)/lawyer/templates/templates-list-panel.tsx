@@ -69,7 +69,6 @@ function matchesSearch(
     template.name,
     template.description ?? "",
     template.status,
-    template.latestVersion?.status ?? "",
   ]
     .join(" ")
     .toLowerCase();
@@ -94,14 +93,9 @@ function VersionCell({ version }: { version: LawyerTemplateListItem["latestVersi
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
-        v{version.version}
-      </Badge>
-      <Badge variant="outline" className="border-slate-200 text-slate-600">
-        {version.status}
-      </Badge>
-    </div>
+    <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+      v{version.version}
+    </Badge>
   );
 }
 

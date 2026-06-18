@@ -67,6 +67,12 @@ export async function createTemplateWithDocx(
     throw new Error("El nombre del template es requerido.");
   }
 
+  const trimmedDescription = description?.trim() ?? "";
+
+  if (!trimmedDescription) {
+    throw new Error("La descripción es obligatoria.");
+  }
+
   if (!file) {
     throw new Error("El archivo DOCX es requerido.");
   }
@@ -76,7 +82,7 @@ export async function createTemplateWithDocx(
   const template = await db.contractTemplate.create({
     data: {
       name: trimmedName,
-      description: description?.trim() ? description.trim() : null,
+      description: trimmedDescription,
       status: TemplateStatus.DRAFT,
       createdById: userId,
     },

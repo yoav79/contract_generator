@@ -25,6 +25,7 @@ export type CreateTemplateActionState =
 const INVALID_SESSION_MESSAGE = "Sesión inválida. Inicia sesión nuevamente.";
 const UNAUTHORIZED_MESSAGE = "No autorizado para crear templates.";
 const MISSING_FILE_MESSAGE = "El archivo DOCX es requerido.";
+const MISSING_DESCRIPTION_MESSAGE = "La descripción es obligatoria.";
 const GENERIC_ERROR_MESSAGE =
   "No se pudo crear el template. Verifica los datos e intenta de nuevo.";
 
@@ -248,13 +249,13 @@ export async function createTemplateAction(
   }
 
   const name = String(formData.get("name") ?? "").trim();
-  const descriptionRaw = formData.get("description");
-  const description =
-    descriptionRaw === null || descriptionRaw === undefined
-      ? null
-      : String(descriptionRaw).trim() || null;
+  const description = String(formData.get("description") ?? "").trim();
 
   const fileField = formData.get("file");
+
+  if (!description) {
+    return { success: false, message: MISSING_DESCRIPTION_MESSAGE };
+  }
 
   if (!(fileField instanceof File) || fileField.size === 0) {
     return { success: false, message: MISSING_FILE_MESSAGE };
